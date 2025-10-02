@@ -1,0 +1,28 @@
+{
+  "_comment": "GitHub API Configuration Example - Copy this file to config.json and add your token",
+  "_instructions": {
+    "step1": "Go to https://github.com/settings/tokens",
+    "step2": "Generate a new token (classic) with 'public_repo' scope", 
+    "step3": "Copy the token and paste it in the 'token' field below",
+    "step4": "Save this file as 'config.json' (remove .example extension)",
+    "step5": "Restart NetTool to apply changes"
+  },
+  "github": {
+    "tokens": [
+      {
+        "name": "default",
+        "token": "ghp_your_token_here",
+        "organization": "NetScout-Go",
+        "_note": "Replace 'ghp_your_token_here' with your actual GitHub personal access token"
+      }
+    ]
+  },
+  "sources": [
+    {
+      "name": "NetScout-Go", 
+      "organization": "NetScout-Go",
+      "isDefault": true,
+      "pattern": "Plugin_*"
+    }
+  ]
+}

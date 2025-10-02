@@ -19,6 +19,13 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// Build-time variables (set via ldflags during build)
+var (
+	Version   = "dev"
+	BuildTime = "unknown"
+	GitCommit = "unknown"
+)
+
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
@@ -43,7 +50,20 @@ func createMyRender() multitemplate.Renderer {
 func main() {
 	// Parse command line flags
 	port := flag.Int("port", 8080, "Port to run the server on")
+	version := flag.Bool("version", false, "Show version information")
 	flag.Parse()
+
+	// Show version if requested
+	if *version {
+		fmt.Printf("NetTool %s\n", Version)
+		fmt.Printf("Build Time: %s\n", BuildTime)
+		fmt.Printf("Git Commit: %s\n", GitCommit)
+		os.Exit(0)
+	}
+
+	// Print startup banner
+	fmt.Printf("🌐 NetTool %s starting...\n", Version)
+	fmt.Printf("📅 Built: %s (commit: %s)\n", BuildTime, GitCommit)
 
 	// Ensure plugin directories exist
 	os.MkdirAll("app/plugins/plugins", 0755)
@@ -65,6 +85,10 @@ func main() {
 
 	// Initialize plugin installer
 	pluginInstaller := plugins.NewPluginInstaller("app/plugins/plugins", pluginManager)
+
+	// GitHub API configuration tip
+	log.Println("💡 TIP: To avoid GitHub API rate limits, add a personal access token to app/plugins/config.json")
+	log.Println("   Instructions: https://github.com/settings/tokens (generate token with 'public_repo' scope)")
 
 	// Serve static files
 	r.Static("/static", "./app/static")

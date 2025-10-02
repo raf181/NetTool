@@ -102,6 +102,12 @@ const PluginManagerUI = {
                 return response.json();
             })
             .then(data => {
+                // Handle null or undefined data
+                if (!data || !Array.isArray(data)) {
+                    console.warn('Plugin data is null or not an array:', data);
+                    data = []; // Default to empty array
+                }
+                
                 this.renderPluginTable(data);
                 
                 // Update repository stats

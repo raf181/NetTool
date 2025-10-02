@@ -31,6 +31,13 @@ body.dark-mode {
     --nav-link-color: #e0e0e0;
     --nav-link-hover: #90caf9;
     --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    --input-bg: #2d2d2d;
+    --text-muted: #adb5bd;
+    --link-color: #90caf9;
+    --table-bg: #1e1e1e;
+    --table-hover-bg: rgba(255, 255, 255, 0.075);
+    --modal-bg: #1e1e1e;
+    --accordion-bg: #2d2d2d;
 }
 
 body {
@@ -167,6 +174,26 @@ body {
 .nav-link.active {
     color: #fff;
     background-color: var(--primary-color);
+}
+
+/* Non-active navigation links in main content area */
+.nav-tabs .nav-link {
+    color: #6c757d;
+    border: 1px solid transparent;
+    border-top-left-radius: 0.375rem;
+    border-top-right-radius: 0.375rem;
+}
+
+.nav-tabs .nav-link:hover {
+    color: #495057;
+    background-color: #e9ecef;
+    border-color: #e9ecef #e9ecef #dee2e6;
+}
+
+.nav-tabs .nav-link.active {
+    color: #495057;
+    background-color: #fff;
+    border-color: #dee2e6 #dee2e6 #fff;
 }
 
 .nav-link i {
@@ -799,6 +826,30 @@ body.dark-mode .table-hover > tbody > tr:hover {
     background-color: rgba(255, 255, 255, 0.075);
 }
 
+/* Table header improvements */
+.table thead th {
+    color: #495057;
+    border-bottom-width: 2px;
+}
+
+body.dark-mode .table thead th {
+    color: var(--text-color);
+    border-bottom-color: var(--border-color);
+}
+
+/* General text improvements for light mode */
+.text-secondary {
+    color: #6c757d !important;
+}
+
+.card-text {
+    color: #6c757d;
+}
+
+.form-text {
+    color: #6c757d;
+}
+
 /* Progress bars in dark mode */
 body.dark-mode .progress {
     background-color: #2d2d2d;
@@ -808,14 +859,84 @@ body.dark-mode .progress {
 body.dark-mode input,
 body.dark-mode select,
 body.dark-mode textarea {
-    background-color: #2d2d2d;
+    background-color: var(--input-bg);
     border-color: var(--border-color);
     color: var(--text-color);
 }
 
 body.dark-mode .form-control:focus {
-    background-color: #2d2d2d;
+    background-color: var(--input-bg);
     color: var(--text-color);
+    border-color: var(--link-color);
+    box-shadow: 0 0 0 0.2rem rgba(144, 202, 249, 0.25);
+}
+
+/* Form select styling */
+body.dark-mode .form-select {
+    background-color: var(--input-bg);
+    color: var(--text-color);
+    border-color: var(--border-color);
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23e0e0e0' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m1 6 7 7 7-7'/%3e%3c/svg%3e");
+}
+
+body.dark-mode .form-select:focus {
+    background-color: var(--input-bg);
+    border-color: var(--link-color);
+    box-shadow: 0 0 0 0.2rem rgba(144, 202, 249, 0.25);
+}
+
+/* Input group styling */
+body.dark-mode .input-group-text {
+    background-color: var(--accordion-bg);
+    color: var(--text-color);
+    border-color: var(--border-color);
+}
+
+/* Switch toggle improvements */
+.form-switch .form-check-input {
+    width: 2em;
+    margin-left: -2.5em;
+    background-color: transparent;
+    border: 1px solid #adb5bd;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='rgba%280,0,0,.25%29'/%3e%3c/svg%3e");
+}
+
+body.dark-mode .form-switch .form-check-input {
+    border-color: var(--border-color);
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='rgba%28255,255,255,.75%29'/%3e%3c/svg%3e");
+}
+
+.form-switch .form-check-input:checked {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23fff'/%3e%3c/svg%3e");
+}
+
+body.dark-mode .form-switch .form-check-input:checked {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+/* Breadcrumbs in dark mode */
+body.dark-mode .breadcrumb {
+    background-color: transparent;
+}
+
+body.dark-mode .breadcrumb-item a {
+    color: var(--link-color);
+}
+
+body.dark-mode .breadcrumb-item.active {
+    color: var(--text-color);
+}
+
+/* Links in dark mode */
+body.dark-mode a {
+    color: var(--link-color);
+}
+
+body.dark-mode a:hover {
+    color: #bbdefb;
 }
 
 /* Modal in dark mode */
@@ -840,6 +961,73 @@ body.dark-mode .modal-content {
 
 body.dark-mode .text-muted {
     color: #adb5bd !important;
+}
+
+/* Button styling in dark mode */
+body.dark-mode .btn-outline-secondary {
+    border-color: var(--border-color);
+    color: var(--text-color);
+}
+
+body.dark-mode .btn-outline-secondary:hover {
+    background-color: var(--border-color);
+    border-color: var(--border-color);
+    color: var(--text-color);
+}
+
+body.dark-mode .btn-close {
+    filter: invert(1);
+}
+
+/* Alert text improvements */
+.alert {
+    color: #495057;
+}
+
+body.dark-mode .alert {
+    color: var(--text-color);
+}
+
+/* Badge text improvements */
+.badge {
+    color: #fff;
+}
+
+/* Small text improvements */
+.small, small {
+    color: #6c757d;
+}
+
+body.dark-mode .small, 
+body.dark-mode small {
+    color: var(--text-muted);
+}
+
+/* Lead text improvements */
+.lead {
+    color: #6c757d;
+}
+
+body.dark-mode .lead {
+    color: var(--text-color);
+}
+
+/* Toast notifications in dark mode */
+body.dark-mode .toast {
+    background-color: var(--card-bg);
+    color: var(--text-color);
+    border-color: var(--border-color);
+}
+
+body.dark-mode .toast-header {
+    background-color: var(--accordion-bg);
+    border-bottom-color: var(--border-color);
+    color: var(--text-color);
+}
+
+/* Progress bars in dark mode */
+body.dark-mode .progress {
+    background-color: var(--accordion-bg);
 }
 
 /* Chart adjustments for dark mode */

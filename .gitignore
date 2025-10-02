@@ -1,13 +1,78 @@
+# Python
 __pycache__/
 venv/
+*venv*
+
+# Logs
 logs/
 log/
-*venv*
-arp_lib/ 
+*.log
+
+# Build artifacts
+build/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Backup files
 *.bak
-test/
-plugin.json.tmp
 *backup*
 *.new
+
+# Test files
+test/
+
+# Temporary files
+plugin.json.tmp
+*.tmp
+*.temp
+.tmp/
+
+# Configuration files with secrets
 config.json
+app/plugins/config.json
+
+# Plugin directories (keep structure but ignore content)
 app/plugins/plugins/*
+!app/plugins/plugins/.gitkeep
+
+# Development files
+arp_lib/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Go specific
+*.test
+*.prof
+vendor/
+
+# Runtime data
+pids/
+*.pid
+*.seed
+
+# Dependency directories
+node_modules/
+
+# Optional caches
+.npm
+.node_repl_history
+
+.build/
+.dist/

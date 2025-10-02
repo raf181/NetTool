@@ -40,6 +40,11 @@
     font-size: 1rem;
     font-weight: 600;
     margin: 0;
+    color: #495057;
+}
+
+body.dark-mode .plugin-details .card-header h6 {
+    color: var(--text-color);
 }
 
 .plugin-details code {
@@ -48,11 +53,21 @@
     padding: 2px 4px;
     border-radius: 3px;
     font-size: 0.85rem;
+    color: #495057;
+}
+
+body.dark-mode .plugin-details code {
+    background-color: var(--accordion-bg);
+    color: var(--text-color);
 }
 
 .plugin-details .fw-bold {
     font-weight: 600 !important;
-    color: #555;
+    color: #495057;
+}
+
+body.dark-mode .plugin-details .fw-bold {
+    color: var(--text-color) !important;
 }
 
 /* Toast notification positioning */
@@ -61,6 +76,18 @@
     bottom: 20px;
     right: 20px;
     z-index: 1050;
+    max-width: 400px;
+}
+
+.toast {
+    max-width: 400px;
+}
+
+.toast-body {
+    white-space: pre-line;
+    word-wrap: break-word;
+    max-height: 300px;
+    overflow-y: auto;
 }
 
 /* Plugin status badges */
@@ -90,15 +117,44 @@
 body.dark-mode .plugin-manager-container .card {
     background-color: var(--card-bg);
     border-color: var(--border-color);
+    color: var(--text-color);
+}
+
+body.dark-mode .card-header {
+    background-color: var(--accordion-bg);
+    border-bottom-color: var(--border-color);
+    color: var(--text-color);
 }
 
 body.dark-mode #installedPluginsTable {
     color: var(--text-color);
 }
 
-body.dark-mode .modal-content {
-    background-color: var(--card-bg);
+body.dark-mode #installedPluginsTable thead th {
+    border-bottom-color: var(--border-color);
     color: var(--text-color);
+}
+
+body.dark-mode #installedPluginsTable td {
+    border-bottom-color: var(--border-color);
+}
+
+body.dark-mode .table-hover tbody tr:hover {
+    background-color: var(--table-hover-bg);
+}
+
+body.dark-mode .modal-content {
+    background-color: var(--modal-bg);
+    color: var(--text-color);
+    border-color: var(--border-color);
+}
+
+body.dark-mode .modal-header {
+    border-bottom-color: var(--border-color);
+}
+
+body.dark-mode .modal-footer {
+    border-top-color: var(--border-color);
 }
 
 body.dark-mode .form-control {
@@ -107,8 +163,71 @@ body.dark-mode .form-control {
     border-color: var(--border-color);
 }
 
+body.dark-mode .form-control:focus {
+    background-color: var(--input-bg);
+    border-color: var(--link-color);
+    box-shadow: 0 0 0 0.2rem rgba(144, 202, 249, 0.25);
+}
+
 body.dark-mode .form-text {
     color: var(--text-muted);
+}
+
+body.dark-mode .form-select {
+    background-color: var(--input-bg);
+    color: var(--text-color);
+    border-color: var(--border-color);
+}
+
+body.dark-mode .input-group-text {
+    background-color: var(--accordion-bg);
+    color: var(--text-color);
+    border-color: var(--border-color);
+}
+
+body.dark-mode .nav-tabs .nav-link {
+    color: var(--text-muted);
+    border-color: transparent;
+}
+
+body.dark-mode .nav-tabs .nav-link:hover {
+    color: var(--text-color);
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+body.dark-mode .nav-tabs .nav-link.active {
+    background-color: var(--card-bg);
+    border-color: var(--border-color) var(--border-color) var(--card-bg);
+    color: var(--text-color);
+}
+
+body.dark-mode .nav-tabs {
+    border-bottom-color: var(--border-color);
+}
+
+/* Button text improvements */
+body.dark-mode .btn-outline-secondary {
+    color: var(--text-color);
+    border-color: var(--border-color);
+}
+
+body.dark-mode .btn-outline-secondary:hover {
+    color: var(--text-color);
+    background-color: var(--border-color);
+    border-color: var(--border-color);
+}
+
+/* Card title and text improvements */
+body.dark-mode .card-title {
+    color: var(--text-color);
+}
+
+body.dark-mode .card-text {
+    color: var(--text-color);
+}
+
+body.dark-mode .text-muted {
+    color: var(--text-muted) !important;
 }
 
 /* Loading state for table row */
@@ -225,4 +344,126 @@ body.dark-mode .form-text {
 #bulkInstallModal .table-responsive {
     max-height: 300px;
     overflow-y: auto;
+}
+
+/* Dark mode improvements for repository styling */
+body.dark-mode .repository-card {
+    background-color: var(--card-bg);
+    border-color: var(--border-color);
+    box-shadow: 0 2px 8px rgba(255, 255, 255, 0.1);
+}
+
+body.dark-mode .repository-card:hover {
+    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.15);
+}
+
+body.dark-mode .repository-header {
+    background-color: var(--accordion-bg);
+    border-bottom-color: var(--border-color);
+}
+
+body.dark-mode .repository-card .card-title {
+    color: var(--text-color);
+}
+
+body.dark-mode .version-tag {
+    background-color: rgba(13, 110, 253, 0.1);
+    color: var(--link-color);
+    border-color: rgba(13, 110, 253, 0.2);
+}
+
+body.dark-mode .version-tag.update-available {
+    background-color: rgba(255, 193, 7, 0.1);
+    color: #ffc107;
+    border-color: rgba(255, 193, 7, 0.2);
+}
+
+body.dark-mode .repo-stats .stat-item {
+    color: var(--text-muted);
+}
+
+body.dark-mode .plugin-card.selected {
+    border-color: var(--link-color);
+    box-shadow: 0 0 0 0.2rem rgba(144, 202, 249, 0.25);
+}
+
+body.dark-mode .toast-container .toast {
+    background-color: var(--card-bg);
+    color: var(--text-color);
+}
+
+body.dark-mode .toast-header {
+    background-color: var(--accordion-bg);
+    color: var(--text-color);
+    border-bottom-color: var(--border-color);
+}
+
+/* Improved checkbox visibility */
+.form-check-input {
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.075);
+}
+
+.form-check-input:checked {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.form-check-input:focus {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+body.dark-mode .form-check-input {
+    background-color: var(--input-bg);
+    border-color: var(--border-color);
+    box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.075);
+}
+
+body.dark-mode .form-check-input:checked {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+body.dark-mode .form-check-input:focus {
+    border-color: var(--link-color);
+    box-shadow: 0 0 0 0.25rem rgba(144, 202, 249, 0.25);
+}
+
+/* Form check labels */
+.form-check-label {
+    color: var(--text-color);
+    cursor: pointer;
+    margin-left: 0.5rem;
+}
+
+body.dark-mode .form-check-label {
+    color: var(--text-color);
+}
+
+/* Enhanced form controls for better visibility */
+.form-control, .form-select {
+    border: 1px solid #ced4da;
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+body.dark-mode .form-control, 
+body.dark-mode .form-select {
+    background-color: var(--input-bg);
+    border-color: var(--border-color);
+    color: var(--text-color);
+}
+
+/* Switch toggle improvements */
+.form-switch .form-check-input {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='rgba%280,0,0,.25%29'/%3e%3c/svg%3e");
+}
+
+body.dark-mode .form-switch .form-check-input {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='rgba%28255,255,255,.75%29'/%3e%3c/svg%3e");
+}
+
+.form-switch .form-check-input:checked {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23fff'/%3e%3c/svg%3e");
 }

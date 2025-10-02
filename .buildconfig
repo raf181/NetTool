@@ -1,0 +1,33 @@
+# Build configuration for optimized Go binaries
+
+# Go build optimization flags
+GOOS=linux
+GOARCH=amd64
+CGO_ENABLED=0
+
+# Linker flags for minimal binary size
+# -w: disable DWARF generation
+# -s: disable symbol table and debug info
+# -B: disable bounds checking
+# -C: disable compilation of assert statements
+LDFLAGS=-w -s
+GCFLAGS=-B -C
+ASMFLAGS=-B
+
+# Additional optimization flags
+BUILDFLAGS=-a -installsuffix cgo
+
+# UPX compression settings (if available)
+UPX_FLAGS=--best --lzma
+
+# Strip binary after build
+STRIP_BINARY=1
+
+# Target binary names
+MAIN_BINARY=nettool
+CLI_BINARY=nettool-iterate
+
+# Version information (injected at build time)
+VERSION_PKG=main
+VERSION_VARS=Version BuildTime GitCommit
+

@@ -107,28 +107,59 @@ Object.assign(PluginManagerUI, {
                 return response.json();
             })
             .then(plugins => {
+                // Handle null or invalid response
+                if (!plugins || !Array.isArray(plugins)) {
+                    console.warn('Plugin catalog data is null or not an array:', plugins);
+                    plugins = [];
+                }
                 this.renderPluginStore(plugins);
             })
             .catch(error => {
                 console.error('Error loading plugin catalog:', error);
-                storeGrid.innerHTML = `
-                    <div class="col-12 text-center py-5">
-                        <div class="alert alert-danger">
-                            <i class="bi bi-exclamation-triangle me-2"></i>
-                            Failed to load plugin catalog: ${error.message}
+                
+                let errorHtml;
+                if (error.message.includes('rate limit')) {
+                    errorHtml = `
+                        <div class="col-12 text-center py-5">
+                            <div class="alert alert-warning">
+                                <h5><i class="bi bi-exclamation-triangle me-2"></i>GitHub API Rate Limit Exceeded</h5>
+                                <p class="mb-3">To resolve this issue and access the plugin catalog:</p>
+                                <ol class="text-start mb-3">
+                                    <li>Go to <a href="https://github.com/settings/tokens" target="_blank">GitHub Settings → Tokens</a></li>
+                                    <li>Generate a new token (classic) with <strong>'public_repo'</strong> scope</li>
+                                    <li>Add the token to <code>app/plugins/config.json</code> in the 'token' field</li>
+                                    <li>Restart the NetTool application</li>
+                                </ol>
+                                <p class="small mb-0">This increases your rate limit from 60 to 5000 requests per hour.</p>
+                            </div>
+                            <button class="btn btn-primary mt-3" id="retryAfterTokenBtn">
+                                <i class="bi bi-arrow-clockwise me-2"></i>Retry Loading Catalog
+                            </button>
                         </div>
-                        <button class="btn btn-primary mt-3" id="retryLoadCatalogBtn">
-                            <i class="bi bi-arrow-clockwise me-2"></i>Retry
-                        </button>
-                    </div>
-                `;
+                    `;
+                } else {
+                    errorHtml = `
+                        <div class="col-12 text-center py-5">
+                            <div class="alert alert-danger">
+                                <i class="bi bi-exclamation-triangle me-2"></i>
+                                Failed to load plugin catalog: ${error.message}
+                            </div>
+                            <button class="btn btn-primary mt-3" id="retryLoadCatalogBtn">
+                                <i class="bi bi-cloud-download me-2"></i>Retry Loading
+                            </button>
+                        </div>
+                    `;
+                }
+                
+                storeGrid.innerHTML = errorHtml;
                 
                 // Add retry button handler
-                document.getElementById('retryLoadCatalogBtn').addEventListener('click', () => {
-                    this.loadAvailablePlugins();
-                });
-                
-                this.showToast('Error', 'Failed to load plugin catalog: ' + error.message, 'error');
+                const retryBtn = document.getElementById('retryAfterTokenBtn') || document.getElementById('retryLoadCatalogBtn');
+                if (retryBtn) {
+                    retryBtn.addEventListener('click', () => {
+                        this.loadAvailablePlugins();
+                    });
+                }
             });
     },
     
@@ -154,7 +185,21 @@ Object.assign(PluginManagerUI, {
             })
             .catch(error => {
                 console.error('Error refreshing plugin catalog:', error);
-                this.showToast('Error', 'Failed to refresh plugin catalog: ' + error.message, 'error');
+                
+                // Check if it's a rate limit error
+                let errorMessage = error.message;
+                if (errorMessage.includes('rate limit')) {
+                    errorMessage = `GitHub API rate limit exceeded. To resolve this:
+
+1. Go to https://github.com/settings/tokens
+2. Generate a new token (classic) with 'public_repo' scope
+3. Add the token to app/plugins/config.json in the 'token' field
+4. Restart the application
+
+This will increase your rate limit from 60 to 5000 requests per hour.`;
+                }
+                
+                this.showToast('Error', 'Failed to refresh plugin catalog: ' + errorMessage, 'error');
             })
             .finally(() => {
                 refreshBtn.disabled = false;
@@ -166,7 +211,12 @@ Object.assign(PluginManagerUI, {
     renderPluginStore: function(plugins) {
         const storeGrid = document.getElementById('pluginStoreGrid');
         
-        if (!plugins || plugins.length === 0) {
+        // Ensure plugins is an array
+        if (!plugins || !Array.isArray(plugins)) {
+            plugins = [];
+        }
+        
+        if (plugins.length === 0) {
             storeGrid.innerHTML = `
                 <div class="col-12 text-center py-5">
                     <div class="alert alert-info">
@@ -196,7 +246,7 @@ Object.assign(PluginManagerUI, {
     
     // Filter plugins in the store based on search, category, and installed status
     filterPluginStore: function() {
-        if (!this.availablePlugins) return;
+        if (!this.availablePlugins || !Array.isArray(this.availablePlugins)) return;
         
         const searchInput = document.getElementById('storeSearchInput');
         const categoryFilter = document.getElementById('categoryFilter');
