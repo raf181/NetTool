@@ -255,8 +255,13 @@ body.dark-mode .plugin-card {
 }
 
 body.dark-mode .plugin-card .card-header {
-    background-color: var(--accordion-bg);
+    background-color: var(--accordion-bg) !important;
     color: var(--text-color);
+    border-bottom-color: var(--border-color);
+}
+
+body.dark-mode .plugin-card .card-header .text-muted {
+    color: var(--text-muted) !important;
 }
 
 body.dark-mode .plugin-card .card-footer {

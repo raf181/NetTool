@@ -1,11 +1,21 @@
 package plugins
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
+	"math/rand"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"plugin"
 	"reflect"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -322,10 +332,259 @@ func executePortScanner(params map[string]interface{}) (interface{}, error) {
 }
 
 func executeBandwidthTest(params map[string]interface{}) (interface{}, error) {
+	var attemptNotes []string
+
+	if result, err := runLibreSpeedCLI(); err == nil {
+		return result, nil
+	} else {
+		attemptNotes = append(attemptNotes, fmt.Sprintf("librespeed-cli: %v", err))
+	}
+
+	if result, err := runOoklaSpeedtest(); err == nil {
+		return result, nil
+	} else {
+		attemptNotes = append(attemptNotes, fmt.Sprintf("speedtest binary: %v", err))
+	}
+
+	if result, err := runLegacySpeedtest(); err == nil {
+		return result, nil
+	} else {
+		attemptNotes = append(attemptNotes, fmt.Sprintf("speedtest-cli: %v", err))
+	}
+
+	return simulateBandwidthTest(attemptNotes), nil
+}
+
+func runLibreSpeedCLI() (map[string]interface{}, error) {
+	binary, err := exec.LookPath("librespeed-cli")
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binary, "--json")
+	var combined bytes.Buffer
+	cmd.Stdout = &combined
+	cmd.Stderr = &combined
+
+	if err := cmd.Run(); err != nil {
+		return nil, formatCommandError("librespeed-cli", err, combined.String())
+	}
+
+	var payload struct {
+		Timestamp string  `json:"timestamp"`
+		Download  float64 `json:"download"`
+		Upload    float64 `json:"upload"`
+		Ping      float64 `json:"ping"`
+		Jitter    float64 `json:"jitter"`
+		Server    struct {
+			Name     string `json:"name"`
+			Location string `json:"location"`
+			Country  string `json:"country"`
+			Sponsor  string `json:"sponsor"`
+		} `json:"server"`
+	}
+
+	if err := json.Unmarshal(combined.Bytes(), &payload); err != nil {
+		return nil, fmt.Errorf("parse librespeed-cli json: %w", err)
+	}
+
+	downloadMbps := math.Round(payload.Download*100) / 100
+	uploadMbps := math.Round(payload.Upload*100) / 100
+	latency := math.Round(payload.Ping*100) / 100
+	jitter := math.Round(payload.Jitter*100) / 100
+	timestamp := payload.Timestamp
+	if timestamp == "" {
+		timestamp = time.Now().Format(time.RFC3339)
+	}
+
+	serverName := payload.Server.Name
+	if serverName == "" {
+		serverName = payload.Server.Sponsor
+	}
+	if serverName == "" {
+		serverName = fmt.Sprintf("%s %s", payload.Server.Location, payload.Server.Country)
+	}
+	serverName = strings.TrimSpace(serverName)
+
 	return map[string]interface{}{
-		"message":        "Bandwidth test plugin would run a speed test here",
-		"implementation": "Not yet implemented in the plugin loader helper",
+		"downloadSpeed": downloadMbps,
+		"uploadSpeed":   uploadMbps,
+		"latency":       latency,
+		"jitter":        jitter,
+		"source":        "librespeed-cli",
+		"server":        serverName,
+		"timestamp":     timestamp,
 	}, nil
+}
+
+func runOoklaSpeedtest() (map[string]interface{}, error) {
+	binary, err := exec.LookPath("speedtest")
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binary, "--accept-license", "--accept-gdpr", "--format=json")
+	var combined bytes.Buffer
+	cmd.Stdout = &combined
+	cmd.Stderr = &combined
+
+	if err := cmd.Run(); err != nil {
+		return nil, formatCommandError("speedtest", err, combined.String())
+	}
+
+	var payload struct {
+		Type      string `json:"type"`
+		Timestamp string `json:"timestamp"`
+		Ping      struct {
+			Latency float64 `json:"latency"`
+			Jitter  float64 `json:"jitter"`
+		} `json:"ping"`
+		Download struct {
+			Bandwidth float64 `json:"bandwidth"`
+		} `json:"download"`
+		Upload struct {
+			Bandwidth float64 `json:"bandwidth"`
+		} `json:"upload"`
+		PacketLoss float64 `json:"packetLoss"`
+		ISP        string  `json:"isp"`
+		Interface  struct {
+			InternalIP string `json:"internalIp"`
+			ExternalIP string `json:"externalIp"`
+		} `json:"interface"`
+	}
+
+	if err := json.Unmarshal(combined.Bytes(), &payload); err != nil {
+		return nil, fmt.Errorf("parse speedtest json: %w", err)
+	}
+
+	downloadMbps := math.Round((payload.Download.Bandwidth*8/1e6)*100) / 100
+	uploadMbps := math.Round((payload.Upload.Bandwidth*8/1e6)*100) / 100
+
+	latency := math.Round(payload.Ping.Latency*100) / 100
+	jitter := math.Round(payload.Ping.Jitter*100) / 100
+
+	timestamp := payload.Timestamp
+	if timestamp == "" {
+		timestamp = time.Now().Format(time.RFC3339)
+	}
+
+	return map[string]interface{}{
+		"downloadSpeed": downloadMbps,
+		"uploadSpeed":   uploadMbps,
+		"latency":       latency,
+		"jitter":        jitter,
+		"packetLoss":    payload.PacketLoss,
+		"provider":      payload.ISP,
+		"internalIP":    payload.Interface.InternalIP,
+		"externalIP":    payload.Interface.ExternalIP,
+		"source":        "speedtest",
+		"timestamp":     timestamp,
+	}, nil
+}
+
+func runLegacySpeedtest() (map[string]interface{}, error) {
+	binary, err := exec.LookPath("speedtest-cli")
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binary, "--json")
+	var combined bytes.Buffer
+	cmd.Stdout = &combined
+	cmd.Stderr = &combined
+
+	if err := cmd.Run(); err != nil {
+		return nil, formatCommandError("speedtest-cli", err, combined.String())
+	}
+
+	var payload struct {
+		Download   float64 `json:"download"`
+		Upload     float64 `json:"upload"`
+		Ping       float64 `json:"ping"`
+		PacketLoss float64 `json:"packetLoss"`
+		Timestamp  string  `json:"timestamp"`
+		Server     struct {
+			Host    string `json:"host"`
+			Sponsor string `json:"sponsor"`
+			Name    string `json:"name"`
+		} `json:"server"`
+	}
+
+	if err := json.Unmarshal(combined.Bytes(), &payload); err != nil {
+		return nil, fmt.Errorf("parse speedtest-cli json: %w", err)
+	}
+
+	downloadMbps := math.Round((payload.Download/1e6)*100) / 100
+	uploadMbps := math.Round((payload.Upload/1e6)*100) / 100
+	latency := math.Round(payload.Ping*100) / 100
+	timestamp := payload.Timestamp
+	if timestamp == "" {
+		timestamp = time.Now().Format(time.RFC3339)
+	}
+
+	serverName := payload.Server.Name
+	if serverName == "" {
+		serverName = payload.Server.Sponsor
+	}
+	if serverName == "" {
+		serverName = payload.Server.Host
+	}
+
+	return map[string]interface{}{
+		"downloadSpeed": downloadMbps,
+		"uploadSpeed":   uploadMbps,
+		"latency":       latency,
+		"packetLoss":    payload.PacketLoss,
+		"server":        serverName,
+		"source":        "speedtest-cli",
+		"timestamp":     timestamp,
+	}, nil
+}
+
+func simulateBandwidthTest(notes []string) map[string]interface{} {
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	download := math.Round((70+rnd.Float64()*330)*100) / 100
+	upload := math.Round((download*(0.5+rnd.Float64()*0.4))*100) / 100
+	latency := math.Round((8+rnd.Float64()*25)*100) / 100
+	packetLoss := math.Round(rnd.Float64()*50) / 100
+
+	note := "Simulated bandwidth test results"
+	if len(notes) > 0 {
+		note = fmt.Sprintf("%s; attempts: %s", note, strings.Join(notes, "; "))
+	}
+
+	return map[string]interface{}{
+		"downloadSpeed": download,
+		"uploadSpeed":   upload,
+		"latency":       latency,
+		"packetLoss":    packetLoss,
+		"source":        "simulated",
+		"timestamp":     time.Now().Format(time.RFC3339),
+		"note":          note,
+	}
+}
+
+func formatCommandError(command string, err error, output string) error {
+	trimmed := strings.TrimSpace(output)
+	if trimmed == "" {
+		return fmt.Errorf("%s: %w", command, err)
+	}
+
+	if len(trimmed) > 256 {
+		trimmed = trimmed[:256] + "..."
+	}
+
+	return fmt.Errorf("%s: %v - %s", command, err, trimmed)
 }
 
 func executePacketCapture(params map[string]interface{}) (interface{}, error) {
@@ -385,5 +644,556 @@ func executeMTUTester(params map[string]interface{}) (interface{}, error) {
 }
 
 func executeWifiScanner(params map[string]interface{}) (interface{}, error) {
-	return map[string]interface{}{"message": "WiFi Scanner plugin execution simulation"}, nil
+	iface, scanTime, showHidden := wifiParseParameters(params)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(scanTime+10)*time.Second)
+	defer cancel()
+
+	if err := wifiEnsureInterface(ctx, iface); err != nil {
+		return map[string]interface{}{"error": err.Error()}, nil
+	}
+
+	start := time.Now()
+	networks, warnings, err := wifiCollectNetworks(ctx, iface, showHidden)
+
+	result := map[string]interface{}{
+		"interface":          iface,
+		"scan_time":          scanTime,
+		"show_hidden":        showHidden,
+		"requires_privilege": true,
+		"timestamp":          time.Now().Format(time.RFC3339),
+		"scan_duration_ms":   time.Since(start).Milliseconds(),
+		"networks":           []map[string]interface{}{},
+		"network_count":      0,
+	}
+
+	if len(warnings) > 0 {
+		result["warnings"] = warnings
+	}
+
+	if err != nil {
+		result["error"] = err.Error()
+		return result, nil
+	}
+
+	if networks == nil {
+		networks = []map[string]interface{}{}
+	}
+
+	summary := wifiBuildSummary(networks)
+	result["networks"] = networks
+	result["network_count"] = len(networks)
+	result["summary"] = summary
+
+	return result, nil
+}
+
+func wifiParseParameters(params map[string]interface{}) (string, int, bool) {
+	iface, _ := params["interface"].(string)
+	if strings.TrimSpace(iface) == "" {
+		iface = "wlan0"
+	}
+
+	scanTime := 5
+	switch value := params["scan_time"].(type) {
+	case float64:
+		scanTime = int(value)
+	case int:
+		scanTime = value
+	case string:
+		if parsed, err := strconv.Atoi(value); err == nil {
+			scanTime = parsed
+		}
+	}
+	if scanTime < 1 {
+		scanTime = 1
+	}
+	if scanTime > 30 {
+		scanTime = 30
+	}
+
+	showHidden, ok := params["show_hidden"].(bool)
+	if !ok {
+		showHidden = false
+	}
+
+	return iface, scanTime, showHidden
+}
+
+func wifiEnsureInterface(ctx context.Context, iface string) error {
+	cmd := exec.CommandContext(ctx, "ip", "link", "show", iface)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("interface %s not found or inaccessible", iface)
+	}
+	return nil
+}
+
+func wifiCollectNetworks(ctx context.Context, iface string, showHidden bool) ([]map[string]interface{}, []string, error) {
+	var warnings []string
+
+	hasIw := wifiCommandExists("iw")
+	hasIwlist := wifiCommandExists("iwlist")
+	if !hasIw && !hasIwlist {
+		return nil, nil, errors.New("neither 'iw' nor 'iwlist' is available; install with 'sudo apt install iw wireless-tools'")
+	}
+
+	if hasIw {
+		networks, err := wifiScanWithIw(ctx, iface, showHidden)
+		if err == nil && len(networks) > 0 {
+			return wifiNormalizeNetworks(networks), warnings, nil
+		}
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("iw scan fallback: %v", err))
+		}
+	}
+
+	if hasIwlist {
+		networks, err := wifiScanWithIwlist(ctx, iface, showHidden)
+		if err == nil && len(networks) > 0 {
+			warnings = append(warnings, "using iwlist fallback; precision limited")
+			return wifiNormalizeNetworks(networks), warnings, nil
+		}
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("iwlist scan error: %v", err))
+		}
+	}
+
+	if len(warnings) == 0 {
+		warnings = append(warnings, "no networks discovered; ensure the interface supports scanning and run with sudo")
+	}
+
+	return nil, warnings, errors.New("wifi scan produced no results")
+}
+
+func wifiCommandExists(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
+}
+
+func wifiScanWithIw(ctx context.Context, iface string, showHidden bool) ([]map[string]interface{}, error) {
+	cmd := exec.CommandContext(ctx, "sudo", "iw", "dev", iface, "scan")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("iw scan failed: %w: %s", err, stderr.String())
+	}
+
+	return wifiParseIwScan(stdout.String(), showHidden), nil
+}
+
+func wifiScanWithIwlist(ctx context.Context, iface string, showHidden bool) ([]map[string]interface{}, error) {
+	cmd := exec.CommandContext(ctx, "sudo", "iwlist", iface, "scanning")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("iwlist scan failed: %w: %s", err, stderr.String())
+	}
+
+	return wifiParseIwlistScan(stdout.String(), showHidden), nil
+}
+
+func wifiParseIwScan(output string, showHidden bool) []map[string]interface{} {
+	var networks []map[string]interface{}
+	var current map[string]interface{}
+
+	lines := strings.Split(output, "\n")
+	bssidRegex := regexp.MustCompile(`BSS ([0-9a-f:]{17})`)
+	ssidRegex := regexp.MustCompile(`SSID: (.+)`)
+	signalRegex := regexp.MustCompile(`signal: (-?\d+\.\d+) dBm`)
+	channelRegex := regexp.MustCompile(`DS Parameter set: channel (\d+)`)
+	freqRegex := regexp.MustCompile(`freq: (\d+)`)
+	encryptionRegex := regexp.MustCompile(`capability:.*?(Privacy|IBSS)`)
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		if matches := bssidRegex.FindStringSubmatch(line); len(matches) > 1 {
+			if wifiShouldAppend(current, showHidden) {
+				networks = append(networks, current)
+			}
+			current = map[string]interface{}{"bssid": strings.ToLower(matches[1])}
+			continue
+		}
+
+		if current == nil {
+			continue
+		}
+
+		if matches := ssidRegex.FindStringSubmatch(line); len(matches) > 1 {
+			current["ssid"] = matches[1]
+			continue
+		}
+
+		if matches := signalRegex.FindStringSubmatch(line); len(matches) > 1 {
+			if value, err := strconv.ParseFloat(matches[1], 64); err == nil {
+				current["signal_dbm"] = value
+				quality := 2 * (value + 100)
+				switch {
+				case quality > 100:
+					quality = 100
+				case quality < 0:
+					quality = 0
+				}
+				current["signal_quality"] = quality
+			}
+			continue
+		}
+
+		if matches := channelRegex.FindStringSubmatch(line); len(matches) > 1 {
+			if channel, err := strconv.Atoi(matches[1]); err == nil {
+				current["channel"] = channel
+			}
+			continue
+		}
+
+		if matches := freqRegex.FindStringSubmatch(line); len(matches) > 1 {
+			if freq, err := strconv.Atoi(matches[1]); err == nil {
+				current["frequency"] = freq
+				current["band"] = wifiDeriveBand(freq)
+			}
+			continue
+		}
+
+		if matches := encryptionRegex.FindStringSubmatch(line); len(matches) > 1 {
+			current["encrypted"] = true
+			continue
+		}
+
+		switch {
+		case strings.Contains(line, "WPA3"):
+			current["security"] = "WPA3"
+		case strings.Contains(line, "RSN"):
+			current["security"] = "WPA2"
+		case strings.Contains(line, "WPA"):
+			current["security"] = "WPA"
+		case strings.Contains(line, "WEP"):
+			current["security"] = "WEP"
+		}
+	}
+
+	if wifiShouldAppend(current, showHidden) {
+		networks = append(networks, current)
+	}
+
+	return networks
+}
+
+func wifiParseIwlistScan(output string, showHidden bool) []map[string]interface{} {
+	var networks []map[string]interface{}
+	var current map[string]interface{}
+
+	lines := strings.Split(output, "\n")
+	cellRegex := regexp.MustCompile(`Cell \d+ - Address: ([0-9A-F:]{17})`)
+	ssidRegex := regexp.MustCompile(`ESSID:"(.*)"`)
+	qualityRegex := regexp.MustCompile(`Quality=(\d+)/(\d+)`)
+	signalRegex := regexp.MustCompile(`Signal level=(-?\d+) dBm`)
+	channelRegex := regexp.MustCompile(`Channel:(\d+)`)
+	freqRegex := regexp.MustCompile(`Frequency:(\d+\.\d+) GHz`)
+	encryptionRegex := regexp.MustCompile(`Encryption key:(on|off)`)
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		if matches := cellRegex.FindStringSubmatch(line); len(matches) > 1 {
+			if wifiShouldAppend(current, showHidden) {
+				networks = append(networks, current)
+			}
+			current = map[string]interface{}{"bssid": strings.ToLower(matches[1])}
+			continue
+		}
+
+		if current == nil {
+			continue
+		}
+
+		if matches := ssidRegex.FindStringSubmatch(line); len(matches) > 1 {
+			current["ssid"] = matches[1]
+			continue
+		}
+
+		if matches := qualityRegex.FindStringSubmatch(line); len(matches) > 2 {
+			if quality, err := strconv.Atoi(matches[1]); err == nil {
+				if maxQuality, err := strconv.Atoi(matches[2]); err == nil && maxQuality > 0 {
+					current["signal_quality"] = float64(quality) * 100 / float64(maxQuality)
+				}
+			}
+			continue
+		}
+
+		if matches := signalRegex.FindStringSubmatch(line); len(matches) > 1 {
+			if value, err := strconv.ParseFloat(matches[1], 64); err == nil {
+				current["signal_dbm"] = value
+			}
+			continue
+		}
+
+		if matches := channelRegex.FindStringSubmatch(line); len(matches) > 1 {
+			if channel, err := strconv.Atoi(matches[1]); err == nil {
+				current["channel"] = channel
+			}
+			continue
+		}
+
+		if matches := freqRegex.FindStringSubmatch(line); len(matches) > 1 {
+			if freq, err := strconv.ParseFloat(matches[1], 64); err == nil {
+				mhz := int(freq * 1000)
+				current["frequency"] = mhz
+				current["band"] = wifiDeriveBand(mhz)
+			}
+			continue
+		}
+
+		if matches := encryptionRegex.FindStringSubmatch(line); len(matches) > 1 {
+			current["encrypted"] = matches[1] == "on"
+			continue
+		}
+
+		switch {
+		case strings.Contains(line, "WPA3"):
+			current["security"] = "WPA3"
+		case strings.Contains(line, "WPA2"):
+			current["security"] = "WPA2"
+		case strings.Contains(line, "WPA"):
+			current["security"] = "WPA"
+		case strings.Contains(line, "WEP"):
+			current["security"] = "WEP"
+		}
+	}
+
+	if wifiShouldAppend(current, showHidden) {
+		networks = append(networks, current)
+	}
+
+	return networks
+}
+
+func wifiShouldAppend(network map[string]interface{}, showHidden bool) bool {
+	if network == nil || len(network) == 0 {
+		return false
+	}
+	ssid, _ := network["ssid"].(string)
+	return ssid != "" || showHidden
+}
+
+func wifiNormalizeNetworks(networks []map[string]interface{}) []map[string]interface{} {
+	if len(networks) == 0 {
+		return networks
+	}
+
+	dedup := make(map[string]map[string]interface{})
+	for _, network := range networks {
+		bssid, _ := network["bssid"].(string)
+		key := strings.ToLower(strings.TrimSpace(bssid))
+		if key == "" {
+			key = fmt.Sprintf("%v-%v", network["ssid"], network["channel"])
+		}
+
+		existing, ok := dedup[key]
+		candidate := wifiSanitizeNetwork(network)
+		if !ok {
+			dedup[key] = candidate
+			continue
+		}
+
+		if wifiCompareSignal(candidate, existing) {
+			dedup[key] = candidate
+		}
+	}
+
+	normalized := make([]map[string]interface{}, 0, len(dedup))
+	for _, network := range dedup {
+		normalized = append(normalized, network)
+	}
+
+	sort.SliceStable(normalized, func(i, j int) bool {
+		qi := wifiSignalScore(normalized[i])
+		qj := wifiSignalScore(normalized[j])
+		if qi == qj {
+			si := wifiString(normalized[i], "ssid")
+			sj := wifiString(normalized[j], "ssid")
+			return strings.ToLower(si) < strings.ToLower(sj)
+		}
+		return qi > qj
+	})
+
+	return normalized
+}
+
+func wifiSanitizeNetwork(network map[string]interface{}) map[string]interface{} {
+	cleaned := make(map[string]interface{}, len(network))
+	for key, value := range network {
+		switch key {
+		case "ssid", "bssid", "security", "band":
+			cleaned[key] = strings.TrimSpace(fmt.Sprintf("%v", value))
+		case "signal_dbm", "signal_quality":
+			cleaned[key] = wifiFloat(value)
+		case "channel", "frequency":
+			cleaned[key] = wifiInt(value)
+		case "encrypted":
+			cleaned[key] = wifiBool(value)
+		default:
+			cleaned[key] = value
+		}
+	}
+
+	if _, ok := cleaned["security"]; !ok {
+		if encrypted, ok := cleaned["encrypted"].(bool); ok {
+			if encrypted {
+				cleaned["security"] = "Protected"
+			} else {
+				cleaned["security"] = "Open"
+			}
+		}
+	}
+
+	if _, ok := cleaned["band"]; !ok {
+		if freq, ok := cleaned["frequency"].(int); ok {
+			cleaned["band"] = wifiDeriveBand(freq)
+		}
+	}
+
+	return cleaned
+}
+
+func wifiCompareSignal(candidate, existing map[string]interface{}) bool {
+	qc := wifiSignalScore(candidate)
+	qe := wifiSignalScore(existing)
+	if qc == qe {
+		return wifiFloat(candidate["signal_dbm"]) > wifiFloat(existing["signal_dbm"])
+	}
+	return qc > qe
+}
+
+func wifiSignalScore(network map[string]interface{}) float64 {
+	quality := wifiFloat(network["signal_quality"])
+	if quality > 0 {
+		if quality > 100 {
+			return 100
+		}
+		return quality
+	}
+	dbm := wifiFloat(network["signal_dbm"])
+	if dbm == 0 {
+		return 0
+	}
+	score := 2 * (dbm + 100)
+	switch {
+	case score < 0:
+		return 0
+	case score > 100:
+		return 100
+	default:
+		return score
+	}
+}
+
+func wifiString(network map[string]interface{}, key string) string {
+	if value, ok := network[key].(string); ok {
+		return value
+	}
+	return ""
+}
+
+func wifiFloat(value interface{}) float64 {
+	switch v := value.(type) {
+	case float64:
+		return v
+	case float32:
+		return float64(v)
+	case int:
+		return float64(v)
+	case int64:
+		return float64(v)
+	case string:
+		if parsed, err := strconv.ParseFloat(v, 64); err == nil {
+			return parsed
+		}
+	}
+	return 0
+}
+
+func wifiInt(value interface{}) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	case float32:
+		return int(v)
+	case string:
+		if parsed, err := strconv.Atoi(v); err == nil {
+			return parsed
+		}
+	}
+	return 0
+}
+
+func wifiBool(value interface{}) bool {
+	switch v := value.(type) {
+	case bool:
+		return v
+	case string:
+		trimmed := strings.TrimSpace(strings.ToLower(v))
+		return trimmed == "true" || trimmed == "1" || trimmed == "yes"
+	}
+	return false
+}
+
+func wifiDeriveBand(freqMHz int) string {
+	switch {
+	case freqMHz >= 5925:
+		return "6 GHz"
+	case freqMHz >= 5150:
+		return "5 GHz"
+	case freqMHz >= 2400:
+		return "2.4 GHz"
+	default:
+		return "Unknown"
+	}
+}
+
+func wifiBuildSummary(networks []map[string]interface{}) map[string]interface{} {
+	summary := map[string]interface{}{
+		"strongest":            nil,
+		"channel_distribution": map[int]int{},
+		"security_profiles":    map[string]int{},
+	}
+
+	if len(networks) == 0 {
+		return summary
+	}
+
+	strongest := map[string]interface{}{
+		"ssid":           wifiString(networks[0], "ssid"),
+		"bssid":          wifiString(networks[0], "bssid"),
+		"signal_dbm":     wifiFloat(networks[0]["signal_dbm"]),
+		"signal_quality": wifiSignalScore(networks[0]),
+		"channel":        wifiInt(networks[0]["channel"]),
+		"band":           wifiString(networks[0], "band"),
+		"security":       wifiString(networks[0], "security"),
+	}
+	summary["strongest"] = strongest
+
+	channelDist := summary["channel_distribution"].(map[int]int)
+	securityProfiles := summary["security_profiles"].(map[string]int)
+
+	for _, network := range networks {
+		if channel := wifiInt(network["channel"]); channel > 0 {
+			channelDist[channel]++
+		}
+
+		security := wifiString(network, "security")
+		if security == "" {
+			security = "Unknown"
+		}
+		securityProfiles[security]++
+	}
+
+	return summary
 }

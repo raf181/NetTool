@@ -1,200 +1,118 @@
-# NetTool: Network Diagnostic Tool
+# NetTool
 
-![NetTool Logo](/Resources/)
-> [!warning]
-> Do not use for production environments. This is a personal project for educational purposes and may not be secure or stable enough for critical applications. Most of the plugins are not optimized for production use and may require additional configuration (some even dont behave correctly outside the environment that they were developed in) or security measures.
+[![Go Version](https://img.shields.io/github/go-mod/go-version/NetScout-Go/NetTool?color=00ADD8&label=Go%20Version)](https://github.com/NetScout-Go/NetTool/blob/main/go.mod)
+[![License](https://img.shields.io/github/license/NetScout-Go/NetTool.svg?color=green)](LICENSE)
+[![Build](https://img.shields.io/badge/build-Go%20modules-blue)](https://github.com/NetScout-Go/NetTool)
+[![Status](https://img.shields.io/badge/status-experimental-orange)](#project-status)
 
-NetTool is a comprehensive network diagnostic and monitoring tool. It provides a web-based interface to run various network diagnostic tools and view real-time network information.
+> [!IMPORTANT]
+> NetTool is a personal, educational project. It is not hardened for production environments and several plugins expect trusted networks or elevated privileges. Review each plugin before using it in critical scenarios.
 
-> [!warning]
-> The documentation has been made with AI assistance, I hate making documentation since this will be published for the semmer event by hackclub i thought it would be a good idea to use AI.
+NetTool is a web-based network diagnostic console for Raspberry Pi and other Linux devices. It centralizes common troubleshooting utilities, live telemetry, and a plugin marketplace into a single responsive dashboard.
 
-## Features
+> Documentation is maintained with the help of AI tooling. If you spot an omission or error, please open an issue or pull request.
 
-- **Web-Based Dashboard**: Access all network tools through an intuitive web interface
-- **Real-Time Network Information**: Monitor your Pi's network connections with live updates
-- **Modular Plugin System**: Easily extend functionality with new diagnostic tools
-- **Categorized Plugin Interface**: Plugins organized by function for easier navigation
-- **Mobile-Friendly Interface**: Use on any device with responsive design
-- **RESTful API**: Programmatically access all tools through a JSON API
-- **WebSocket Updates**: Receive real-time network statistics via WebSocket
-- **External Plugin Support**: Extend functionality with custom scripts in Python, Bash, and more
+![NetTool UI concept diagram](Resources/)
 
-## Included Diagnostic Tools
+---
 
-### Network Analysis
+## Table of Contents
 
-- **Network Information**: View detailed information about your Pi's network interfaces
-- **Bandwidth Test**: Measure network bandwidth
-- **iPerf3 Throughput Test**: Measure end-to-end bandwidth with remote iPerf3 servers
-- **iPerf3 Server**: Host an iPerf3 server for bandwidth testing from other devices
-- **Traffic Control (QoS)**: Simulate network conditions and test Quality of Service
-- **Network Quality Monitor**: Measure jitter, latency, and packet loss over time
-- **MTU Size Tester**: Find the optimal MTU size for your connection
-- **Packet Capture**: Capture and analyze network packets using tcpdump
+- [Highlights](#highlights)
+- [Architecture Overview](#architecture-overview)
+- [Prerequisites](#prerequisites)
+- [Quick Start](#quick-start)
+- [Running & Deployment](#running--deployment)
+- [Configuration](#configuration)
+- [Dashboard at a Glance](#dashboard-at-a-glance)
+- [Plugin Ecosystem](#plugin-ecosystem)
+- [API & Realtime Access](#api--realtime-access)
+- [Troubleshooting](#troubleshooting)
+- [Development Workflow](#development-workflow)
+- [Project Status](#project-status)
+- [License](#license)
+- [Open Source Credits](#open-source-credits)
+- [Acknowledgments](#acknowledgments)
 
-### Connectivity Testing
+---
 
-- **Ping**: Test connectivity to hosts with ICMP echo requests
-- **Traceroute**: Trace the route packets take to a network host
+## Highlights
 
-### Network Discovery
+- **Unified dashboard** with real-time interface statistics, DHCP lease state, traffic counters, and connection health.
+- **Modular plugin framework** supporting native Go plugins and external scripts (Python/Bash) with dynamic discovery.
+- **Rich diagnostics catalog** including bandwidth tests, latency heatmaps, packet capture, iPerf3, traceroute, DNS utilities, SSL checks, and more.
+- **REST & WebSocket APIs** for automation, remote orchestration, and live telemetry streaming.
+- **Mobile-first UI** built with Bootstrap and Chart.js so the console works on tablets and phones beside your rack.
+- **Service-friendly packaging** featuring systemd examples, install scripts, and optional external tool integrations.
 
-- **Port Scanner**: Scan for open ports on a target host
-- **Network Device Discovery**: Find devices on your local network
-- **Wi-Fi Scanner**: Discover and analyze nearby wireless networks
+## Architecture Overview
 
-### DNS Tools
+- **Backend**: Go 1.24+, Gin web framework, Gorilla WebSocket, gopsutil for system interrogation.
+- **Frontend**: Bootstrap 5, Bootstrap Icons, Chart.js, vanilla JS modules for real-time updates.
+- **Plugins**: Organized under `app/plugins/plugins/<plugin_id>`, each with metadata (`plugin.json`) and an `Execute` entrypoint.
+- **Storage**: Configuration and plugin assets served from the local filesystem; no database dependency.
 
-- **DNS Lookup**: Perform DNS lookups for domains
-- **DNS Propagation Checker**: Test DNS propagation across multiple servers
-- **Reverse DNS Lookup**: Find hostnames associated with IP addresses
+## Prerequisites
 
-### Security
+- Raspberry Pi (Zero 2W, 3B+, 4) or any Linux host.
+- Go toolchain **1.20+**, tested on 1.24.4.
+- GitHub CLI (`gh`) for plugin install automation.
+- Optional third-party CLIs based on your plugin selection: `librespeed-cli`, `iperf3`, `nmap`, `tcpdump`, etc.
 
-- **SSL/TLS Certificate Checker**: Analyze and verify SSL certificates
-
-## Requirements
-
-- Raspberry Pi (Zero 2W, 3B+, 4, or newer recommended but compatible with any hardware)
-- Raspberry Pi OS (or other compatible Linux distribution)
-- Go programming language installed (version 1.16 or newer)
-- Internet connection (for installation)
-- Additional dependencies for specific plugins (see [Plugin Dependencies](app/plugins/plugins/DEPENDENCIES.md))
-
-## Installation
-
-### Basic Installation
-
-1. Clone the repository:
-
-    ```bash
-    git clone https://github.com/NetScout-Go/NetTool.git
-    cd NetTool
-    ```
-
-2. Install the GitHub CLI (required for plugin installation):
-
-    ```bash
-    sudo apt install gh
-    gh auth login
-    ```
-
-3. Install plugins:
-
-    ```bash
-    chmod +x install-plugins.sh
-    ./install-plugins.sh
-    ```
-   
-   This will let you choose to install all available plugins or select specific ones.
-
-4. Build the application:
-
-    ```bash
-    go build
-    ```
-
-    **Note for Raspberry Pi Zero 2W users**: If you encounter compilation errors related to CGO, use:
-
-    ```bash
-    env CGO_ENABLED=0 go build
-    ```
-
-5. Run the application:
-
-    ```bash
-    ./nettool
-    ```
-
-    You should not need to run this with sudo, but if you encounter permission issues or if you need to use plugins that require elevated privileges (like Traffic Control), try:
-
-    ```bash
-    sudo ./nettool
-    ```
-
-    By default, it will start on port 8080. You can change the port by using the `--port` flag.
-
-6. Access the web interface:
-   Open a browser and navigate to `http://<your-pi-ip>:8080`
-
-### Plugin Management
-
-NetTool uses a plugin system for its network diagnostic tools. All plugins are maintained in separate repositories under the NetScout-Go GitHub organization.
-
-#### Installing Plugins
-
-You can install plugins using the provided script:
+## Quick Start
 
 ```bash
+git clone https://github.com/NetScout-Go/NetTool.git
+cd NetTool
+
+# Install core dependencies
+sudo apt update
+sudo apt install gh librespeed-cli
+gh auth login
+
+# Fetch plugins (select interactively)
+chmod +x install-plugins.sh
 ./install-plugins.sh
+
+# Build & run
+go build
+./nettool --port 8080
 ```
 
-This script will:
+> **Pi Zero tip:** Use `env CGO_ENABLED=0 go build` if you hit CGO-related link errors.
 
-1. Check if GitHub CLI is installed and authenticated
-2. Fetch all available plugins from the NetScout-Go organization
-3. Let you choose to install all plugins or select specific ones
-4. Clone the selected plugin repositories into the correct location
+Visit `http://<device-ip>:8080` to open the dashboard.
 
-#### Listing Installed Plugins
+## Running & Deployment
 
-To see which plugins are currently installed:
+- **Foreground:** `./nettool --port 8080`
+- **Elevated plugins:** `sudo ./nettool` for features requiring privileged sockets or traffic shaping.
+- **systemd service:**
 
-```bash
-./list-plugins.sh
-```
+  ```ini
+  [Unit]
+  Description=NetTool Network Diagnostic Tool
+  After=network.target
 
-#### Plugin Dependencies
+  [Service]
+  ExecStart=/home/pi/NetTool/nettool --port 8080
+  WorkingDirectory=/home/pi/NetTool
+  Restart=always
+  User=pi
 
-Some plugins require additional system dependencies. See the [Plugin Dependencies](app/plugins/plugins/DEPENDENCIES.md) file for details on how to install necessary dependencies for specific plugins.
+  [Install]
+  WantedBy=multi-user.target
+  ```
 
-## Running as a Service
-
-To run NetTool as a background service that starts on boot:
-
-1. Create a systemd service file:
-
-    ```bash
-    sudo nano /etc/systemd/system/netscout.service
-    ```
-
-2. Add the following content (adjust paths as needed):
-
-    ```ini
-    [Unit]
-    Description=NetTool Network Diagnostic Tool
-    After=network.target
-
-    [Service]
-    ExecStart=/home/pi/NetTool/nettool #You may need to adjust this path
-    WorkingDirectory=/home/pi/NetTool
-    StandardOutput=inherit
-    StandardError=inherit
-    Restart=always
-    User=pi
-
-    [Install]
-    WantedBy=multi-user.target
-    ```
-
-3. Enable and start the service:
-
-    ```bash
-    sudo systemctl enable netscout.service
-    sudo systemctl start netscout.service
-    sudo systemctl status netscout.service # Check the service status and if it's running correctly
-    ```
+  ```bash
+  sudo systemctl enable netscout.service
+  sudo systemctl start netscout.service
+  sudo systemctl status netscout.service
+  ```
 
 ## Configuration
 
-By default, NetTool runs on port 8080. To use a different port:
-
-```bash
-./nettool --port=8888
-```
-
-You can also configure the application by creating a config.json file in the root directory:
+`nettool` accepts flags and an optional `config.json` in the project root:
 
 ```json
 {
@@ -205,144 +123,104 @@ You can also configure the application by creating a config.json file in the roo
 }
 ```
 
-## Dashboard Features
+Flags override file values. Restart the service after editing the config.
 
-The main dashboard provides real-time information about your network interfaces:
+## Dashboard at a Glance
 
-- **Connection Status**: Current connection state and uptime
-- **IP Configuration**: IPv4/IPv6 addresses, subnet mask, and gateway
-- **Interface Details**: MAC address, link speed, and duplex settings
-- **Traffic Statistics**: Bytes/packets sent and received
-- **DNS Servers**: Currently configured DNS servers
-- **DHCP Information**: DHCP lease status and expiration
-- **ARP Table**: Address Resolution Protocol entries
-- **Network Topology**: Simple visualization of network devices
+- **Connection status** with uptime, link speed, duplex mode, and interface health.
+- **IP configuration** showing IPv4/IPv6 addresses, gateways, DNS servers, and DHCP lease metrics.
+- **Traffic statistics** updating live via WebSocket (packets, bytes, errors).
+- **Network topology hints** including ARP snapshots and discovered devices.
+- **Speed test card** backed by `librespeed-cli` (preferred) with fallbacks to other CLIs or simulated results.
 
-## Plugin System
+## Plugin Ecosystem
 
-NetTool uses a modular plugin system that makes it easy to add new diagnostic tools. Plugins are now organized into categories for easier navigation through an accordion menu in the sidebar. Each plugin consists of:
+- Plugins live under `app/plugins/plugins/` and are categorized (Analysis, Discovery, DNS, Security, etc.).
+- Each plugin exposes metadata via `plugin.json` and a Go `Execute` function or external script wrapper.
+- Manage plugins with helper scripts:
+  - `./install-plugins.sh` – clone/update official plugin repositories.
+  - `./list-plugins.sh` – enumerate installed plugins the UI will surface.
+- Refer to [app/plugins/DEVELOPMENT.md](app/plugins/DEVELOPMENT.md) for authoring guidelines (parameters, result contracts, logging).
 
-1. A **plugin.json** file defining metadata and parameters
-2. A **plugin.go** file implementing the plugin's functionality
+### Spotlight Plugins
 
-See the [Plugin Development Guide](app/plugins/DEVELOPMENT.md) for details on creating custom plugins.
+| Category | Plugin | Description |
+| --- | --- | --- |
+| Analysis | `bandwidth_test` | Run LibreSpeed/Speedtest CLIs and surface Mbps, latency, jitter. |
+| Analysis | `network_latency_heatmap` | Measure multi-target latency and plot heatmap. |
+| Discovery | `port_scanner` | Front-end to `nmap` for quick reconnaissance. |
+| DNS | `dns_propagation` | Compare DNS responses across providers. |
+| Security | `ssl_checker` | Inspect leaf and chain certificates, expiry, and issuer details. |
 
-### Available Plugins
+## API & Realtime Access
 
-| Plugin | Description | Parameters |
-|--------|-------------|------------|
-| **Network Analysis** | | |
-| network_info | Get detailed network info | interface |
-| arp_manager | View and manage ARP table entries | action, interface, ip_address, mac_address, entry_type, verbose, numeric |
-| bandwidth_test | Measure network speed | duration, direction, server |
-| iperf3 | iPerf3 throughput testing | server, port, duration, protocol, reverse, parallel |
-| iperf3_server | Host an iPerf3 server | port, bind_address, protocol, duration, action |
-| tc_controller | Traffic Control (QoS) simulation | interface, mode, bandwidth, latency, packet_loss, jitter, duration |
-| network_quality | Monitor network quality metrics | duration, target, interval |
-| mtu_tester | Find optimal MTU size | host, startSize, endSize, step |
-| packet_capture | Capture network packets | interface, duration, filter, outputFile |
-| **Connectivity Testing** | | |
-| ping | Test connectivity to hosts | host, count, interval, size |
-| traceroute | Trace network path | host, maxHops, timeout |
-| **Network Discovery** | | |
-| port_scanner | Scan for open ports | host, portRange, timeout |
-| device_discovery | Find devices on local network | subnet, timeout |
-| wifi_scanner | Scan for wireless networks | interface |
-| **DNS Tools** | | |
-| dns_lookup | Perform DNS lookups | domain, type (A, AAAA, MX, etc.) |
-| dns_propagation | Check DNS propagation | domain, recordType, nameservers |
-| reverse_dns_lookup | Find hostnames for IPs | ipAddress |
-| **Security** | | |
-| ssl_checker | Verify SSL/TLS certificates | domain, port |
+- List plugins: `GET /api/plugins`
+- Plugin metadata: `GET /api/plugins/{id}`
+- Run plugin: `POST /api/plugins/{id}/run` with JSON payload
+- Network snapshot: `GET /api/network-info`
 
-## API Usage
-
-All plugins can be accessed via the RESTful API:
-
-- List all plugins: `GET /api/plugins`
-- Get plugin details: `GET /api/plugins/{id}`
-- Run a plugin: `POST /api/plugins/{id}/run` (with JSON parameters)
-- Get network info: `GET /api/network-info`
-
-Example API call to run the ping plugin:
+Example (ping):
 
 ```bash
-curl -X POST http://<your-pi-ip>:8080/api/plugins/ping/run \
+curl -X POST http://<device-ip>:8080/api/plugins/ping/run \
   -H "Content-Type: application/json" \
   -d '{"host": "example.com", "count": 4}'
 ```
 
-Example response:
-
-```json
-{
-  "host": "example.com",
-  "sent": 4,
-  "received": 4,
-  "loss": 0,
-  "minRtt": 24.5,
-  "avgRtt": 27.2,
-  "maxRtt": 30.1,
-  "results": [
-    {"seq": 1, "ttl": 54, "time": 24.5},
-    {"seq": 2, "ttl": 54, "time": 27.8},
-    {"seq": 3, "ttl": 54, "time": 30.1},
-    {"seq": 4, "ttl": 54, "time": 26.4}
-  ],
-  "timestamp": "2025-06-12T14:22:35Z"
-}
-```
-
-## WebSocket Support
-
-NetTool provides real-time updates through WebSockets:
+### WebSocket Stream
 
 ```javascript
-const ws = new WebSocket('ws://<your-pi-ip>:8080/ws');
-
-ws.onmessage = function(event) {
-  const data = JSON.parse(event.data);
-  console.log('Received:', data);
-};
+const ws = new WebSocket('ws://<device-ip>:8080/ws');
+ws.onmessage = event => console.log(JSON.parse(event.data));
 ```
 
-## External Plugin Support
-
-NetTool supports external plugins written in languages like Python and Bash. See the [External Plugin Guide](app/plugins/plugins/external_plugin/README.md) for more information.
+Messages include traffic counters, interface state changes, DHCP lease updates, and plugin progress events.
 
 ## Troubleshooting
 
-### Common Issues
+- **Compilation errors (Pi Zero):** `env CGO_ENABLED=0 go build`
+- **Permission errors:** Run with sudo if the plugin needs raw sockets or tc access.
+- **Missing tool:** Install the CLI noted in the plugin card or disable the plugin in config.
+- **WebSocket blocked:** Check firewalls or reverse proxies that strip upgrade headers.
+- **Logs:** `journalctl -u netscout.service -f`
 
-- **Compilation Errors on Raspberry Pi Zero**: Use `env CGO_ENABLED=0 go build`
-- **Permission Denied**: Run with sudo for network tools that require elevated privileges
-- **Interface Not Found**: Check if the network interface name is correct (e.g., wlan0, eth0)
-- **WebSocket Connection Failed**: Check if firewall is blocking WebSocket connections
+## Development Workflow
 
-### Logs
+- Format code: `gofmt -w .`
+- Lint (optional): integrate `golangci-lint` or `staticcheck` locally.
+- Run tests: `go test ./...`
+- Hot reload (dev): use `CompileDaemon` or `air` if preferred.
+- Contribution steps:
+  1. Fork the repo
+  2. `git checkout -b feature/<name>`
+  3. Commit with clear messages
+  4. `git push origin feature/<name>`
+  5. Open a Pull Request describing changes and testing
 
-Check the application logs for detailed error information:
+## Project Status
 
-```bash
-journalctl -u netscout.service -f
-```
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- Focused on hobbyist and hackathon deployments.
+- Known rough edges: limited authentication, plugin permission model, i18n gaps.
+- Roadmap ideas: role-based access, plugin marketplace UI enhancements, telemetry export.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project ships under the MIT License. See [LICENSE](LICENSE) for full text.
+
+## Open Source Credits
+
+NetTool exists thanks to these excellent projects:
+
+- [Go](https://go.dev/)
+- [Gin](https://gin-gonic.com/) and [gin-contrib/multitemplate](https://github.com/gin-contrib/multitemplate)
+- [gopsutil](https://github.com/shirou/gopsutil)
+- [gorilla/websocket](https://github.com/gorilla/websocket)
+- [Bootstrap](https://getbootstrap.com/), [Bootstrap Icons](https://icons.getbootstrap.com/), and [Chart.js](https://www.chartjs.org/)
+- [LibreSpeed CLI](https://github.com/librespeed/speedtest-cli) and [speedtest-cli](https://github.com/sivel/speedtest-cli)
+- [iperf3](https://github.com/esnet/iperf), [nmap](https://nmap.org/), and [tcpdump](https://www.tcpdump.org/)
 
 ## Acknowledgments
 
-- The Go community for excellent networking libraries
-- Raspberry Pi Foundation for creating such a versatile platform
-- All contributors who have helped improve this project
+- The Go community for stellar networking libraries and tooling
+- Raspberry Pi Foundation for repeatedly punching above its weight
+- All contributors, testers, and Hack Club members cheering this project on

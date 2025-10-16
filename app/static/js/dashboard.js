@@ -34,6 +34,12 @@ let autoRefreshPauseTime = null;
 
 // Initialize dashboard on document load
 document.addEventListener('DOMContentLoaded', function() {
+    const dashboardRoot = document.querySelector('.dashboard-container');
+    if (!dashboardRoot) {
+        console.debug('dashboard.js: no dashboard container found, skipping initialization');
+        return;
+    }
+
     initializeCharts();
     initializeWebSocket();
     fetchNetworkInfo();

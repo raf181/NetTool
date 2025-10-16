@@ -3,12 +3,15 @@ package core
 import (
 	"bufio"
 	"bytes"
+	"encoding/binary"
+	"io"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
-	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	psnet "github.com/shirou/gopsutil/v3/net"
@@ -92,132 +95,284 @@ type ServiceLatency struct {
 	HTTP       float64 `json:"http"`       // HTTP latency in ms
 }
 
-// GetNetworkInfo retrieves the current network information
-func GetNetworkInfo() (*NetworkInfo, error) {
-	// Get network interfaces
+func findPrimaryInterface() (*net.Interface, *psnet.IOCountersStat, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	// Get IO counters for traffic statistics
-	ioCounters, err := psnet.IOCounters(true)
+	counters, err := psnet.IOCounters(true)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	counterMap := make(map[string]psnet.IOCountersStat, len(counters))
+	for _, c := range counters {
+		counterMap[c.Name] = c
+	}
+
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+
+		if c, ok := counterMap[iface.Name]; ok {
+			counter := c
+			ifaceCopy := iface
+			return &ifaceCopy, &counter, nil
+		}
+
+		ifaceCopy := iface
+		return &ifaceCopy, nil, nil
+	}
+
+	return nil, nil, nil
+}
+
+func extractIPInfo(iface *net.Interface) (string, string, string) {
+	if iface == nil {
+		return "", "", ""
+	}
+
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return "", "", ""
+	}
+
+	var ipv4, ipv6, subnet string
+	for _, addr := range addrs {
+		if ipNet, ok := addr.(*net.IPNet); ok {
+			if ip := ipNet.IP.To4(); ip != nil {
+				ipv4 = ip.String()
+				ones, _ := ipNet.Mask.Size()
+				subnet = cidrToSubnet(ones)
+			} else if ipv6 == "" {
+				ipv6 = ipNet.IP.String()
+			}
+		}
+	}
+
+	return ipv4, ipv6, subnet
+}
+
+func getConnectionMetrics(gateway string) (float64, float64) {
+	targets := []string{}
+	if gateway != "" && gateway != "N/A" {
+		targets = append(targets, gateway)
+	}
+	targets = append(targets, "8.8.8.8")
+
+	for _, target := range targets {
+		latency, loss := probeConnection(target)
+		if latency > 0 || loss < 100 {
+			return latency, loss
+		}
+	}
+
+	return 0, 100
+}
+
+func probeConnection(target string) (float64, float64) {
+	const attempts = 3
+	const timeout = 750 * time.Millisecond
+
+	successes := 0
+	var total float64
+
+	for i := 0; i < attempts; i++ {
+		start := time.Now()
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort(target, "53"), timeout)
+		if err != nil {
+			continue
+		}
+
+		total += float64(time.Since(start).Milliseconds())
+		_ = conn.Close()
+		successes++
+	}
+
+	loss := 100 * float64(attempts-successes) / float64(attempts)
+
+	if successes == 0 {
+		return 0, loss
+	}
+
+	return total / float64(successes), loss
+}
+
+func measureServiceLatencies() ServiceLatency {
+	services := map[string]string{
+		"google":     "google.com",
+		"amazon":     "amazon.com",
+		"cloudflare": "cloudflare.com",
+		"microsoft":  "microsoft.com",
+	}
+
+	type result struct {
+		name    string
+		latency float64
+	}
+
+	results := make(chan result, len(services))
+	var wg sync.WaitGroup
+
+	for name, host := range services {
+		wg.Add(1)
+		go func(n, h string) {
+			defer wg.Done()
+			results <- result{name: n, latency: measureTCPLatency(h)}
+		}(name, host)
+	}
+
+	wg.Wait()
+	close(results)
+
+	lat := ServiceLatency{}
+	for res := range results {
+		switch res.name {
+		case "google":
+			lat.Google = res.latency
+		case "amazon":
+			lat.Amazon = res.latency
+		case "cloudflare":
+			lat.Cloudflare = res.latency
+		case "microsoft":
+			lat.Microsoft = res.latency
+		}
+	}
+
+	lat.DNS = measureDNSLookupLatency()
+	lat.HTTP = measureHTTPSLatency()
+
+	return lat
+}
+
+func measureTCPLatency(host string) float64 {
+	ports := []string{"443", "80"}
+	for _, port := range ports {
+		start := time.Now()
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), 750*time.Millisecond)
+		if err != nil {
+			continue
+		}
+		latency := float64(time.Since(start).Milliseconds())
+		_ = conn.Close()
+		return latency
+	}
+	return 0
+}
+
+func measureDNSLookupLatency() float64 {
+	start := time.Now()
+	_, err := net.LookupHost("www.google.com")
+	if err != nil {
+		return 0
+	}
+	return float64(time.Since(start).Milliseconds())
+}
+
+func measureHTTPSLatency() float64 {
+	client := &http.Client{
+		Timeout: 3 * time.Second,
+	}
+
+	urls := []string{"https://www.google.com", "https://www.cloudflare.com"}
+	for _, url := range urls {
+		start := time.Now()
+		resp, err := client.Head(url)
+		if err != nil {
+			continue
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		return float64(time.Since(start).Milliseconds())
+	}
+
+	return 0
+}
+
+// GetNetworkInfo retrieves the current network information
+func GetNetworkInfo() (*NetworkInfo, error) {
+	iface, counter, err := findPrimaryInterface()
 	if err != nil {
 		return nil, err
 	}
 
-	// For simplicity, we'll focus on the first active interface
-	var activeIface net.Interface
-	var activeIOCounter psnet.IOCountersStat
+	ipv4, ipv6, subnet := extractIPInfo(iface)
 
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp != 0 && iface.Flags&net.FlagLoopback == 0 {
-			activeIface = iface
+	gateway := getDefaultGateway()
+	dnsServers := getDNSServers()
+	dhcpServer := getDHCPServer(gateway)
+	uptime := getUptime()
 
-			// Find matching IO counter
-			for _, counter := range ioCounters {
-				if counter.Name == iface.Name {
-					activeIOCounter = counter
-					break
-				}
-			}
-			break
+	latencyMS, packetLoss := getConnectionMetrics(gateway)
+
+	traffic := Traffic{}
+	if counter != nil {
+		traffic = Traffic{
+			BytesReceived:    int64(counter.BytesRecv),
+			BytesSent:        int64(counter.BytesSent),
+			PacketsReceived:  int64(counter.PacketsRecv),
+			PacketsSent:      int64(counter.PacketsSent),
+			CurrentBandwidth: calculateBandwidth(*counter),
 		}
 	}
 
-	// Get IP addresses
-	var ipv4, ipv6, subnet string
-	addrs, err := activeIface.Addrs()
-	if err == nil {
-		for _, addr := range addrs {
-			if ipNet, ok := addr.(*net.IPNet); ok {
-				if ipNet.IP.To4() != nil {
-					ipv4 = ipNet.IP.String()
-					mask := ipNet.Mask
-					ones, _ := mask.Size()
-					subnet = cidrToSubnet(ones)
-				} else {
-					ipv6 = ipNet.IP.String()
-				}
-			}
-		}
+	status := "disconnected"
+	if ipv4 != "" || ipv6 != "" {
+		status = "connected"
 	}
 
-	// Create network info object
 	networkInfo := &NetworkInfo{
 		IPv4Address: ipv4,
 		IPv6Address: ipv6,
 		SubnetMask:  subnet,
-		Gateway:     getDefaultGateway(),
-		DNSServers:  getDNSServers(),
+		Gateway:     gateway,
+		DNSServers:  dnsServers,
 		DHCPInfo: DHCPInfo{
-			Enabled:    true, // Assumption for simplicity
-			DHCPServer: getDHCPServer(),
-		},
-		EthernetInfo: EthernetInfo{
-			InterfaceName: activeIface.Name,
-			MACAddress:    activeIface.HardwareAddr.String(),
-			Speed:         "1 Gbps", // Placeholder - would need specific system calls to get real values
-			Duplex:        "Full",   // Placeholder
+			Enabled:    true,
+			DHCPServer: dhcpServer,
 		},
 		Connection: Connection{
-			Status:     "connected", // Assumption
-			Uptime:     getUptime(),
-			LatencyMS:  getPingLatency(),
-			PacketLoss: getPacketLoss(),
+			Status:     status,
+			Uptime:     uptime,
+			LatencyMS:  latencyMS,
+			PacketLoss: packetLoss,
 		},
-		Traffic: Traffic{
-			BytesReceived:    int64(activeIOCounter.BytesRecv),
-			BytesSent:        int64(activeIOCounter.BytesSent),
-			PacketsReceived:  int64(activeIOCounter.PacketsRecv),
-			PacketsSent:      int64(activeIOCounter.PacketsSent),
-			CurrentBandwidth: calculateBandwidth(activeIOCounter),
-		},
-		ServiceLatency: ServiceLatency{
-			Google:     measureServiceLatency("google.com"),
-			Amazon:     measureServiceLatency("amazon.com"),
-			Cloudflare: measureServiceLatency("cloudflare.com"),
-			Microsoft:  measureServiceLatency("microsoft.com"),
-			DNS:        measureDNSLatency(),
-			HTTP:       measureHTTPLatency(),
-		},
+		Traffic:   traffic,
 		Timestamp: time.Now(),
 	}
 
-	// Check if it's a wireless connection
-	if isWireless(activeIface.Name) {
-		networkInfo.SSID = getWirelessSSID(activeIface.Name)
-		networkInfo.Connection.SignalStrength = getSignalStrength(activeIface.Name)
-	}
-
-	// Check for VLAN info
-	if strings.Contains(activeIface.Name, ".") {
-		networkInfo.VLANInfo = VLANInfo{
-			Enabled: true,
-			VLANID:  getVLANID(activeIface.Name),
-			Name:    "VLAN " + string(activeIface.Name[strings.LastIndex(activeIface.Name, ".")+1:]),
+	if iface != nil {
+		networkInfo.EthernetInfo = EthernetInfo{
+			InterfaceName: iface.Name,
+			MACAddress:    iface.HardwareAddr.String(),
+			Speed:         "1 Gbps",
+			Duplex:        "Full",
 		}
-	} else {
-		networkInfo.VLANInfo = VLANInfo{
-			Enabled: false,
+
+		if isWireless(iface.Name) {
+			networkInfo.SSID = getWirelessSSID(iface.Name)
+			networkInfo.Connection.SignalStrength = getSignalStrength(iface.Name)
+		}
+
+		if strings.Contains(iface.Name, ".") {
+			vlanComponent := iface.Name[strings.LastIndex(iface.Name, ".")+1:]
+			networkInfo.VLANInfo = VLANInfo{
+				Enabled: true,
+				VLANID:  getVLANID(iface.Name),
+				Name:    "VLAN " + vlanComponent,
+			}
+		} else {
+			networkInfo.VLANInfo = VLANInfo{Enabled: false}
 		}
 	}
 
-	// Get ARP table entries using 'ip neigh show' instead of 'arp -a'
-	arpEntries, err := GetARPTable()
-	if err == nil {
-		networkInfo.ARPEntries = arpEntries
+	if entries, err := GetARPTable(); err == nil {
+		networkInfo.ARPEntries = entries
 	}
 
-	// Measure service latencies
-	networkInfo.ServiceLatency = ServiceLatency{
-		Google:     measureServiceLatency("google.com"),
-		Amazon:     measureServiceLatency("amazon.com"),
-		Cloudflare: measureServiceLatency("cloudflare.com"),
-		Microsoft:  measureServiceLatency("microsoft.com"),
-		DNS:        measureDNSLatency(),
-		HTTP:       measureHTTPLatency(),
-	}
+	networkInfo.ServiceLatency = measureServiceLatencies()
 
 	return networkInfo, nil
 }
@@ -278,40 +433,53 @@ func GetARPTable() ([]ARPEntry, error) {
 
 // Helper functions to retrieve network information
 func getDefaultGateway() string {
-	// Run ip route command to get default gateway
-	cmd := exec.Command("ip", "route", "show", "default")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	err := cmd.Run()
+	data, err := os.ReadFile("/proc/net/route")
 	if err != nil {
 		return "N/A"
 	}
 
-	output := out.String()
-	if output == "" {
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) <= 1 {
 		return "N/A"
 	}
 
-	// Parse output like: "default via 192.168.1.1 dev wlan0 proto dhcp metric 600"
-	fields := strings.Fields(output)
-	if len(fields) >= 3 && fields[0] == "default" && fields[1] == "via" {
-		return fields[2]
+	for _, line := range lines[1:] {
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+
+		// Destination column equals 0 for default route
+		if fields[1] != "00000000" {
+			continue
+		}
+
+		value, err := strconv.ParseUint(fields[2], 16, 32)
+		if err != nil {
+			continue
+		}
+
+		b := make([]byte, 4)
+		binary.LittleEndian.PutUint32(b, uint32(value))
+		ip := net.IP(b)
+		if ip.Equal(net.IPv4zero) {
+			continue
+		}
+
+		return ip.String()
 	}
+
 	return "N/A"
 }
 
 func getDNSServers() []string {
-	// Read DNS servers from /etc/resolv.conf
-	cmd := exec.Command("cat", "/etc/resolv.conf")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	err := cmd.Run()
+	data, err := os.ReadFile("/etc/resolv.conf")
 	if err != nil {
 		return []string{"N/A"}
 	}
 
 	var servers []string
-	scanner := bufio.NewScanner(&out)
+	scanner := bufio.NewScanner(bytes.NewReader(data))
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.HasPrefix(line, "nameserver") {
@@ -328,150 +496,30 @@ func getDNSServers() []string {
 	return servers
 }
 
-func getDHCPServer() string {
-	// Try to get DHCP server from dhclient lease files
-	cmd := exec.Command("grep", "-l", "dhcp-server-identifier", "/var/lib/dhcp/dhclient*.leases", "/var/lib/dhcp/*.leases", "/var/lib/NetworkManager/*.lease")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	err := cmd.Run()
-	if err != nil {
-		// Try another common location
-		cmd = exec.Command("grep", "DHCPSID=", "/var/lib/dhcpcd/*.info")
-		cmd.Stdout = &out
-		err = cmd.Run()
-		if err != nil {
-			return getDefaultGateway() // Fallback to gateway address
-		}
+func getDHCPServer(defaultGateway string) string {
+	if defaultGateway != "" && defaultGateway != "N/A" {
+		return defaultGateway
 	}
-
-	leaseFiles := strings.Fields(out.String())
-	if len(leaseFiles) == 0 {
-		return getDefaultGateway() // Fallback to gateway address
-	}
-
-	// Read the most recent lease file
-	mostRecentFile := leaseFiles[len(leaseFiles)-1]
-	cmd = exec.Command("grep", "dhcp-server-identifier", mostRecentFile)
-	out.Reset()
-	cmd.Stdout = &out
-	err = cmd.Run()
-	if err != nil {
-		return getDefaultGateway()
-	}
-
-	// Parse output like: "option dhcp-server-identifier 192.168.1.1;"
-	output := out.String()
-	if output == "" {
-		return getDefaultGateway()
-	}
-
-	fields := strings.Fields(output)
-	if len(fields) >= 3 {
-		// Remove trailing semicolon if present
-		serverIP := fields[len(fields)-1]
-		return strings.TrimSuffix(serverIP, ";")
-	}
-
-	return getDefaultGateway() // Fallback to gateway address
+	return "N/A"
 }
 
 func getUptime() int64 {
-	// Read uptime from /proc/uptime
-	cmd := exec.Command("cat", "/proc/uptime")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	err := cmd.Run()
+	data, err := os.ReadFile("/proc/uptime")
 	if err != nil {
 		return 0
 	}
 
-	// Parse the first value, which is uptime in seconds
-	uptimeStr := strings.Fields(out.String())
-	if len(uptimeStr) > 0 {
-		uptimeFloat, err := strconv.ParseFloat(uptimeStr[0], 64)
-		if err == nil {
-			return int64(uptimeFloat)
-		}
+	fields := strings.Fields(string(data))
+	if len(fields) == 0 {
+		return 0
 	}
 
-	return 0
-}
-
-func getPingLatency() float64 {
-	// Ping the default gateway once to get latency
-	gateway := getDefaultGateway()
-	if gateway == "N/A" {
-		gateway = "8.8.8.8" // Fallback to Google DNS
-	}
-
-	cmd := exec.Command("ping", "-c", "3", "-W", "1", gateway)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	err := cmd.Run()
+	uptimeFloat, err := strconv.ParseFloat(fields[0], 64)
 	if err != nil {
 		return 0
 	}
 
-	// Parse the output for average latency
-	output := out.String()
-	avgIndex := strings.Index(output, "min/avg/max/mdev")
-	if avgIndex == -1 {
-		return 0
-	}
-
-	statsLine := output[avgIndex:]
-	stats := strings.Split(statsLine, " ")
-	for _, stat := range stats {
-		if strings.Contains(stat, "/") {
-			values := strings.Split(stat, "/")
-			if len(values) >= 2 {
-				avgLatency, err := strconv.ParseFloat(values[1], 64)
-				if err == nil {
-					return avgLatency
-				}
-			}
-			break
-		}
-	}
-
-	return 0
-}
-
-func getPacketLoss() float64 {
-	// Ping the default gateway to get packet loss
-	gateway := getDefaultGateway()
-	if gateway == "N/A" {
-		gateway = "8.8.8.8" // Fallback to Google DNS
-	}
-
-	cmd := exec.Command("ping", "-c", "5", "-W", "1", gateway)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	err := cmd.Run()
-	if err != nil {
-		return 100 // Assume 100% packet loss if ping fails
-	}
-
-	// Parse the output for packet loss percentage
-	output := out.String()
-	packetLossIndex := strings.Index(output, "packet loss")
-	if packetLossIndex == -1 {
-		return 0
-	}
-
-	// Look for the percentage before "packet loss"
-	beforeLoss := output[:packetLossIndex]
-	fields := strings.Fields(beforeLoss)
-	if len(fields) > 0 {
-		lastField := fields[len(fields)-1]
-		percentStr := strings.TrimSuffix(lastField, "%")
-		packetLoss, err := strconv.ParseFloat(percentStr, 64)
-		if err == nil {
-			return packetLoss
-		}
-	}
-
-	return 0
+	return int64(uptimeFloat)
 }
 
 func isWireless(ifaceName string) bool {
@@ -594,6 +642,7 @@ func getVLANID(ifaceName string) int {
 
 // Stores the last measured network counter values for bandwidth calculation
 var (
+	bandwidthMu         sync.Mutex
 	lastMeasurementTime time.Time
 	lastBytesRecv       uint64
 	lastBytesSent       uint64
@@ -601,6 +650,9 @@ var (
 )
 
 func calculateBandwidth(counter psnet.IOCountersStat) float64 {
+	bandwidthMu.Lock()
+	defer bandwidthMu.Unlock()
+
 	now := time.Now()
 
 	// Initialize on first call
@@ -636,163 +688,10 @@ func calculateBandwidth(counter psnet.IOCountersStat) float64 {
 }
 
 func cidrToSubnet(ones int) string {
-	// Convert CIDR notation to subnet mask
-	// For example, /24 -> 255.255.255.0
-	switch ones {
-	case 8:
-		return "255.0.0.0"
-	case 16:
-		return "255.255.0.0"
-	case 24:
+	if ones < 0 || ones > 32 {
 		return "255.255.255.0"
-	case 32:
-		return "255.255.255.255"
-	default:
-		return "255.255.255.0" // Default
 	}
-}
-
-// MeasureDNSLatency pings a DNS server to measure latency
-func MeasureDNSLatency() float64 {
-	// For simplicity, we use the first DNS server from the list
-	dnsServers := getDNSServers()
-	if len(dnsServers) == 0 {
-		return 0
-	}
-
-	dnsServer := dnsServers[0]
-	cmd := exec.Command("ping", "-c", "3", "-W", "1", dnsServer)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	err := cmd.Run()
-	if err != nil {
-		return 0
-	}
-
-	// Parse the output for average latency
-	output := out.String()
-	avgIndex := strings.Index(output, "min/avg/max/mdev")
-	if avgIndex == -1 {
-		return 0
-	}
-
-	statsLine := output[avgIndex:]
-	stats := strings.Split(statsLine, " ")
-	for _, stat := range stats {
-		if strings.Contains(stat, "/") {
-			values := strings.Split(stat, "/")
-			if len(values) >= 2 {
-				avgLatency, err := strconv.ParseFloat(values[1], 64)
-				if err == nil {
-					return avgLatency
-				}
-			}
-			break
-		}
-	}
-
-	return 0
-}
-
-// MeasureHTTPLatency measures latency to a public HTTP server
-func MeasureHTTPLatency() float64 {
-	httpServer := "http://www.google.com"
-
-	startTime := time.Now()
-	resp, err := http.Get(httpServer)
-	if err != nil {
-		return 0
-	}
-	defer resp.Body.Close()
-
-	// Measure time taken to get response
-	elapsed := time.Since(startTime).Seconds() * 1000 // Convert to ms
-	return elapsed
-}
-
-// measureServiceLatency measures latency to a service by hostname
-func measureServiceLatency(hostname string) float64 {
-	// Use ping with a timeout to avoid hanging
-	cmd := exec.Command("ping", "-c", "1", "-w", "2", hostname)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-
-	// Execute ping command
-	err := cmd.Run()
-	if err != nil {
-		return 0
-	}
-
-	// Parse the output for average latency
-	output := out.String()
-
-	// Try to parse the time from the first successful ping
-	timePattern := regexp.MustCompile(`time=(\d+\.?\d*) ms`)
-	matches := timePattern.FindStringSubmatch(output)
-	if len(matches) > 1 {
-		latency, err := strconv.ParseFloat(matches[1], 64)
-		if err == nil {
-			return latency
-		}
-	}
-
-	// Fallback to traditional min/avg/max parsing
-	avgIndex := strings.Index(output, "min/avg/max/mdev")
-	if avgIndex == -1 {
-		return 0
-	}
-
-	statsLine := output[avgIndex:]
-	stats := strings.Split(statsLine, " ")
-	for _, stat := range stats {
-		if strings.Contains(stat, "/") {
-			values := strings.Split(stat, "/")
-			if len(values) >= 2 {
-				avgLatency, err := strconv.ParseFloat(values[1], 64)
-				if err == nil {
-					return avgLatency
-				}
-			}
-			break
-		}
-	}
-
-	return 0
-}
-
-// measureDNSLatency measures DNS resolution latency
-func measureDNSLatency() float64 {
-	startTime := time.Now()
-	_, err := net.LookupHost("www.google.com")
-	if err != nil {
-		return 0
-	}
-	elapsed := time.Since(startTime)
-	return float64(elapsed.Milliseconds())
-}
-
-// measureHTTPLatency measures HTTP connection latency
-func measureHTTPLatency() float64 {
-	httpServer := "https://www.google.com"
-
-	// Create a client with a timeout to avoid hanging
-	client := &http.Client{
-		Timeout: 3 * time.Second,
-	}
-
-	startTime := time.Now()
-	resp, err := client.Get(httpServer)
-	if err != nil {
-		// Try a fallback if the first one fails
-		httpServer = "https://www.cloudflare.com"
-		startTime = time.Now()
-		resp, err = client.Get(httpServer)
-		if err != nil {
-			return 0
-		}
-	}
-	defer resp.Body.Close()
-
-	elapsed := time.Since(startTime)
-	return float64(elapsed.Milliseconds())
+	mask := net.CIDRMask(ones, 32)
+	ip := net.IP(mask)
+	return ip.String()
 }
