@@ -1,3 +1,4 @@
+// Package core provides core networking information retrieval functionality.
 package core
 
 import (

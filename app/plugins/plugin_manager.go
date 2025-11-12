@@ -14,10 +14,15 @@ import (
 type ParameterType string
 
 const (
+	// TypeString is the string type identifier.
 	TypeString  ParameterType = "string"
+	// TypeNumber is the number type identifier.
 	TypeNumber  ParameterType = "number"
+	// TypeBoolean is the boolean type identifier.
 	TypeBoolean ParameterType = "boolean"
+	// TypeSelect is the select type identifier.
 	TypeSelect  ParameterType = "select"
+	// TypeRange is the range type identifier.
 	TypeRange   ParameterType = "range"
 )
 
@@ -212,7 +217,7 @@ func (pm *PluginManager) RefreshPlugins() error {
 		License:     "MIT",
 		Icon:        "network",
 		Parameters:  []Parameter{}, // No parameters needed
-		Execute: func(params map[string]interface{}) (interface{}, error) {
+		Execute: func(_ map[string]interface{}) (interface{}, error) {
 			// This plugin is handled directly by the main dashboard
 			return map[string]interface{}{"message": "Network info plugin is handled by the dashboard"}, nil
 		},

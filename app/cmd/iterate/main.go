@@ -1,3 +1,4 @@
+// Package main implements the iteration command for plugins.
 package main
 
 import (

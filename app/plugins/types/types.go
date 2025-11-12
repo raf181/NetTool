@@ -31,7 +31,7 @@ type PluginExecutor interface {
 	Execute(params map[string]interface{}) (interface{}, error)
 }
 
-// Helper function to create a float pointer
-func FloatPtr(v float64) *float64 {
-	return &v
+// FloatPtr returns a pointer to the given float64 value.
+func FloatPtr(f float64) *float64 {
+	return &f
 }

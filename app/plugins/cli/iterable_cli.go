@@ -1,3 +1,4 @@
+// Package cli provides command-line interface functionality for iterable plugins.
 package cli
 
 import (
@@ -40,8 +41,8 @@ func (cli *IterableCLI) SetParams(params map[string]interface{}) *IterableCLI {
 }
 
 // SetMaxIterations sets the maximum number of iterations
-func (cli *IterableCLI) SetMaxIterations(max int) *IterableCLI {
-	cli.MaxIterations = max
+func (cli *IterableCLI) SetMaxIterations(maxIterations int) *IterableCLI {
+	cli.MaxIterations = maxIterations
 	return cli
 }
 

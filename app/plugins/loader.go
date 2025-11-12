@@ -279,10 +279,9 @@ func (p *DynamicPlugin) Execute(params map[string]interface{}) (interface{}, err
 	if strings.Contains(string(pluginContent), "package main") {
 		// Plugin has main function, run it with command line arguments
 		return p.executeWithMain(params)
-	} else {
-		// Plugin doesn't have main function, try to use it as a library
-		return p.executeWithLibrary(params)
 	}
+	// Plugin doesn't have main function, try to use it as a library
+	return p.executeWithLibrary(params)
 }
 
 // executeWithMain runs plugins that have a main function

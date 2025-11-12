@@ -1,3 +1,4 @@
+// Package types provides type definitions and compatibility helpers for plugins.
 package types
 
 // CompatPlugin converts a legacy LegacyPlugin structure to a PluginDefinition

@@ -39,10 +39,15 @@ type Option struct {
 type ParameterType string
 
 const (
+	// TypeString is the string type identifier.
 	TypeString  ParameterType = "string"
+	// TypeNumber is the number type identifier.
 	TypeNumber  ParameterType = "number"
+	// TypeBoolean is the boolean type identifier.
 	TypeBoolean ParameterType = "boolean"
+	// TypeSelect is the select type identifier.
 	TypeSelect  ParameterType = "select"
+	// TypeRange is the range type identifier.
 	TypeRange   ParameterType = "range"
 )
 

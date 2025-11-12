@@ -551,7 +551,7 @@ func (pi *PluginInstaller) UpdateVersionInfo(pluginID string) error {
 }
 
 // updatePluginJsonWithGitInfo updates the plugin.json file with Git information
-func (pi *PluginInstaller) updatePluginJsonWithGitInfo(pluginDir string, gitInfo GitVersionInfo) error {
+func (pi *PluginInstaller) updatePluginJSONWithGitInfo(pluginDir string, gitInfo GitVersionInfo) error {
 	// Check if plugin.json exists
 	jsonPath := filepath.Join(pluginDir, "plugin.json")
 	if _, err := os.Stat(jsonPath); os.IsNotExist(err) {
@@ -653,7 +653,7 @@ func (pi *PluginInstaller) InstallFromGitHub(org string, repo string, branch str
 	}
 
 	// Update the plugin.json file with Git information
-	if err := pi.updatePluginJsonWithGitInfo(pluginDir, metadata.GitInfo); err != nil {
+	if err := pi.updatePluginJSONWithGitInfo(pluginDir, metadata.GitInfo); err != nil {
 		log.Printf("Warning: Failed to update plugin.json with Git information: %v", err)
 	}
 

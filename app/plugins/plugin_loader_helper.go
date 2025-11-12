@@ -332,26 +332,26 @@ func executePortScanner(params map[string]interface{}) (interface{}, error) {
 	}, nil
 }
 
-func executeBandwidthTest(params map[string]interface{}) (interface{}, error) {
+func executeBandwidthTest(_ map[string]interface{}) (interface{}, error) {
 	var attemptNotes []string
 
-	if result, err := runLibreSpeedCLI(); err == nil {
+	result, err := runLibreSpeedCLI()
+	if err == nil {
 		return result, nil
-	} else {
-		attemptNotes = append(attemptNotes, fmt.Sprintf("librespeed-cli: %v", err))
 	}
+	attemptNotes = append(attemptNotes, fmt.Sprintf("librespeed-cli: %v", err))
 
-	if result, err := runOoklaSpeedtest(); err == nil {
+	result, err = runOoklaSpeedtest()
+	if err == nil {
 		return result, nil
-	} else {
-		attemptNotes = append(attemptNotes, fmt.Sprintf("speedtest binary: %v", err))
 	}
+	attemptNotes = append(attemptNotes, fmt.Sprintf("speedtest binary: %v", err))
 
-	if result, err := runLegacySpeedtest(); err == nil {
+	result, err = runLegacySpeedtest()
+	if err == nil {
 		return result, nil
-	} else {
-		attemptNotes = append(attemptNotes, fmt.Sprintf("speedtest-cli: %v", err))
 	}
+	attemptNotes = append(attemptNotes, fmt.Sprintf("speedtest-cli: %v", err))
 
 	return simulateBandwidthTest(attemptNotes), nil
 }
@@ -592,7 +592,7 @@ func formatCommandError(command string, err error, output string) error {
 	return fmt.Errorf("%s: %v - %s", command, err, trimmed)
 }
 
-func executePacketCapture(params map[string]interface{}) (interface{}, error) {
+func executePacketCapture(_ map[string]interface{}) (interface{}, error) {
 	return map[string]interface{}{
 		"message":        "Packet capture plugin would capture network packets here",
 		"implementation": "Not yet implemented in the plugin loader helper",
@@ -620,31 +620,31 @@ func executeTCController(params map[string]interface{}) (interface{}, error) {
 }
 
 // Stub implementations for the remaining plugins
-func executeARPManager(params map[string]interface{}) (interface{}, error) {
+func executeARPManager(_ map[string]interface{}) (interface{}, error) {
 	return map[string]interface{}{"message": "ARP Manager plugin execution simulation"}, nil
 }
 
-func executeDeviceDiscovery(params map[string]interface{}) (interface{}, error) {
+func executeDeviceDiscovery(_ map[string]interface{}) (interface{}, error) {
 	return map[string]interface{}{"message": "Device Discovery plugin execution simulation"}, nil
 }
 
-func executeNetworkQuality(params map[string]interface{}) (interface{}, error) {
+func executeNetworkQuality(_ map[string]interface{}) (interface{}, error) {
 	return map[string]interface{}{"message": "Network Quality plugin execution simulation"}, nil
 }
 
-func executeDNSPropagation(params map[string]interface{}) (interface{}, error) {
+func executeDNSPropagation(_ map[string]interface{}) (interface{}, error) {
 	return map[string]interface{}{"message": "DNS Propagation plugin execution simulation"}, nil
 }
 
-func executeSSLChecker(params map[string]interface{}) (interface{}, error) {
+func executeSSLChecker(_ map[string]interface{}) (interface{}, error) {
 	return map[string]interface{}{"message": "SSL Checker plugin execution simulation"}, nil
 }
 
-func executeReverseDNSLookup(params map[string]interface{}) (interface{}, error) {
+func executeReverseDNSLookup(_ map[string]interface{}) (interface{}, error) {
 	return map[string]interface{}{"message": "Reverse DNS Lookup plugin execution simulation"}, nil
 }
 
-func executeMTUTester(params map[string]interface{}) (interface{}, error) {
+func executeMTUTester(_ map[string]interface{}) (interface{}, error) {
 	return map[string]interface{}{"message": "MTU Tester plugin execution simulation"}, nil
 }
 
