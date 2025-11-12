@@ -179,11 +179,7 @@
         });
     });
 
-    const pluginID = '{{ .plugin.ID }}';
-    let lastResult = null;
-
-    // Run the plugin with form parameters
-    function runPlugin(customParams) {
+    const pluginID = '{{ .plugin.ID }}';\n    let lastResult = null;\n\n    // Escape HTML to prevent XSS vulnerabilities\n    function escapeHtml(text) {\n        if (!text) return '';\n        const map = {\n            '&': '&amp;',\n            '<': '&lt;',\n            '>': '&gt;',\n            '\"': '&quot;',\n            \"'\": '&#039;'\n        };\n        return text.replace(/[&<>\"']/g, char => map[char]);\n    }\n\n    // Run the plugin with form parameters\n    function runPlugin(customParams) {
         // Show loading indicator
         document.getElementById('pluginResults').classList.add('d-none');
         document.getElementById('resultsLoading').classList.remove('d-none');
@@ -249,14 +245,7 @@
         })
         .catch(error => {
             console.error('Error running plugin:', error);
-            document.getElementById('resultsLoading').classList.add('d-none');
-            document.getElementById('pluginResults').classList.remove('d-none');
-            document.getElementById('pluginResults').innerHTML = `
-                <div class="alert alert-danger">
-                    <i class="bi bi-exclamation-triangle-fill"></i>
-                    Error running plugin: ${error.message}
-                </div>
-            `;
+            document.getElementById('resultsLoading').classList.add('d-none');\n            document.getElementById('pluginResults').classList.remove('d-none');\n            // Escape error message to prevent XSS\n            const escapedError = escapeHtml(error.message);\n            document.getElementById('pluginResults').innerHTML = `\n                <div class=\"alert alert-danger\">\n                    <i class=\"bi bi-exclamation-triangle-fill\"></i>\n                    Error running plugin: ${escapedError}\n                </div>\n            `;
         });
     }
 

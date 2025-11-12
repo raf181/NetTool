@@ -71,6 +71,23 @@ func main() {
 	// Initialize the router
 	r := gin.Default()
 
+	// Add security headers middleware
+	r.Use(func(c *gin.Context) {
+		// Prevent clickjacking attacks
+		c.Header("X-Frame-Options", "DENY")
+		// Prevent MIME type sniffing
+		c.Header("X-Content-Type-Options", "nosniff")
+		// Enable XSS protection
+		c.Header("X-XSS-Protection", "1; mode=block")
+		// Strict Transport Security (only if HTTPS is used)
+		c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		// Prevent referrer leaking
+		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		// Content Security Policy
+		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' ws: wss:")
+		c.Next()
+	})
+
 	// Start network info broadcaster in the background
 	go startNetworkInfoBroadcaster()
 

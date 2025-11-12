@@ -28,6 +28,22 @@ let socket = null;
 let reconnectTimeout = null;
 
 // Auto-refresh control variables
+const Dashboard = {
+    // Escape HTML to prevent XSS vulnerabilities
+    escapeHtml: function(text) {
+        if (!text) return '';
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, char => map[char]);
+    }
+};
+
+// Auto-refresh control variables
 let autoRefreshEnabled = true;
 let autoRefreshInterval = null;
 let autoRefreshPauseTime = null;
@@ -614,13 +630,7 @@ function updateDNSServers(data) {
     dnsElement.innerHTML = '';
     console.log("DNS Servers data:", data.dnsServers); // Debug log
     
-    if (data.dnsServers && Array.isArray(data.dnsServers) && data.dnsServers.length > 0) {
-        data.dnsServers.forEach((server, index) => {
-            dnsElement.innerHTML += `<div>DNS ${index + 1}: ${server}</div>`;
-        });
-    } else {
-        dnsElement.innerHTML = '<div>No DNS servers configured</div>';
-    }
+        if (data.dnsServers && Array.isArray(data.dnsServers) && data.dnsServers.length > 0) {\n        data.dnsServers.forEach((server, index) => {\n            // Escape HTML to prevent XSS\n            const escapedServer = Dashboard.escapeHtml(server);\n            dnsElement.innerHTML += `<div>DNS ${index + 1}: ${escapedServer}</div>`;\n        });\n    } else {\n        dnsElement.innerHTML = '<div>No DNS servers configured</div>';\n    }
 }
 
 // Update interface details
@@ -665,7 +675,9 @@ function updateInterfaceDetails(data) {
             const vlanId = data.vlanInfo.vlanId !== undefined ? data.vlanInfo.vlanId : 
                          (data.vlanInfo.VLANID !== undefined ? data.vlanInfo.VLANID : 0);
             
-            vlanInfoEl.innerHTML = `ID: ${vlanId}<br>Name: ${data.vlanInfo.name || ''}`;
+            // Escape HTML to prevent XSS
+            const escapedName = Dashboard.escapeHtml(data.vlanInfo.name || '');
+            vlanInfoEl.innerHTML = `ID: ${vlanId}<br>Name: ${escapedName}`;
         } else {
             vlanInfoEl.textContent = 'Not configured';
         }

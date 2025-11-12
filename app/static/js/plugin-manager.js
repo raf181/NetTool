@@ -9,6 +9,19 @@ const PluginManager = {
     pluginHistory: {},
     customDisplayFunctions: {}, // Store custom display functions
     
+    // Escape HTML to prevent XSS vulnerabilities
+    escapeHtml: function(text) {
+        if (!text) return '';
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, char => map[char]);
+    },
+    
     // Initialize plugin manager
     init: function() {
         console.log('Plugin Manager initialized');
@@ -812,7 +825,9 @@ const PluginManager = {
     // Display Wi-Fi Device Locator results
     displayWifiDeviceLocatorResults: function(data, element) {
         if (data.error) {
-            element.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            // Escape HTML to prevent XSS
+            const escapedError = this.escapeHtml(data.error);
+            element.innerHTML = `<div class="alert alert-danger">${escapedError}</div>`;
             return;
         }
         
