@@ -121,11 +121,11 @@ func (p *PluginLoader) LoadPlugins() ([]types.Plugin, error) {
 		}
 
 		pluginDir := filepath.Join(p.pluginsDir, entry.Name())
-		pluginJsonPath := filepath.Join(pluginDir, "plugin.json")
+		pluginJSONPath := filepath.Join(pluginDir, "plugin.json")
 		pluginGoPath := filepath.Join(pluginDir, "plugin.go")
 
 		// Check if plugin.json exists
-		if _, err := os.Stat(pluginJsonPath); os.IsNotExist(err) {
+		if _, err := os.Stat(pluginJSONPath); os.IsNotExist(err) {
 			continue
 		}
 
@@ -135,7 +135,7 @@ func (p *PluginLoader) LoadPlugins() ([]types.Plugin, error) {
 		}
 
 		// Read plugin.json
-		data, err := os.ReadFile(pluginJsonPath)
+		data, err := os.ReadFile(pluginJSONPath)
 		if err != nil {
 			fmt.Printf("Warning: Failed to read plugin.json for %s: %v\n", entry.Name(), err)
 			continue
@@ -222,8 +222,8 @@ func (p *DynamicPlugin) GetDefinition() types.PluginDefinition {
 	}
 
 	// First try to read plugin.json directly (for plugins without main function)
-	pluginJsonPath := filepath.Join(p.pluginDir, "plugin.json")
-	if jsonData, err := os.ReadFile(pluginJsonPath); err == nil {
+	pluginJSONPath := filepath.Join(p.pluginDir, "plugin.json")
+	if jsonData, err := os.ReadFile(pluginJSONPath); err == nil {
 		var definition types.PluginDefinition
 		if err := json.Unmarshal(jsonData, &definition); err == nil {
 			p.definition = &definition
@@ -294,8 +294,8 @@ func (p *DynamicPlugin) executeWithMain(params map[string]interface{}) (interfac
 	}
 
 	// Run the plugin.go file with the parameters
-	cmdStr := fmt.Sprintf("cd %s && go run plugin.go --execute='%s'", p.pluginDir, string(paramsJSON))
-	cmd := exec.Command("bash", "-c", cmdStr)
+	cmd := exec.Command("go", "run", "plugin.go", "--execute="+string(paramsJSON))
+	cmd.Dir = p.pluginDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute plugin %s: %v\nOutput: %s", p.pluginID, err, string(output))
@@ -343,12 +343,18 @@ func (p *DynamicPlugin) IsIterable() bool {
 	}
 
 	// Check if the plugin.go file implements IterablePlugin interface
-	cmdStr := fmt.Sprintf("cd %s && grep -q 'BaseIterablePlugin\\|IterablePlugin\\|ShouldContinueIteration' plugin.go", p.pluginDir)
-	cmd := exec.Command("bash", "-c", cmdStr)
-	err := cmd.Run()
+	pluginGoPath := filepath.Join(p.pluginDir, "plugin.go")
+	content, err := os.ReadFile(pluginGoPath)
+	if err != nil {
+		p.isIterable = false
+		return p.isIterable
+	}
 
-	// If grep found a match, the plugin implements the interface
-	p.isIterable = err == nil
+	// Check if the file contains the required interface implementations
+	contentStr := string(content)
+	p.isIterable = strings.Contains(contentStr, "BaseIterablePlugin") ||
+		strings.Contains(contentStr, "IterablePlugin") ||
+		strings.Contains(contentStr, "ShouldContinueIteration")
 	return p.isIterable
 }
 

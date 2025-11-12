@@ -1500,7 +1500,7 @@ func (pi *PluginInstaller) validatePlugin(dir string) (PluginMetadata, error) {
 	return metadata, nil
 }
 
-// extractZip extracts a ZIP file to a directory
+// extractZip extracts a ZIP file to a directory with protections against zip bombs
 func (pi *PluginInstaller) extractZip(zipPath, destDir string) error {
 	// Open the ZIP file
 	reader, err := zip.OpenReader(zipPath)
@@ -1509,6 +1509,15 @@ func (pi *PluginInstaller) extractZip(zipPath, destDir string) error {
 	}
 	defer reader.Close()
 
+	// Protection against zip bombs: limit max size and ratio
+	const (
+		maxExtractSize        = 500 * 1024 * 1024 // 500 MB max extracted size
+		maxFileSize           = 100 * 1024 * 1024 // 100 MB per file
+		compressionRatioLimit = 100               // Max 100:1 compression ratio
+	)
+
+	var totalExtractedSize int64
+
 	// Create destination directory if it doesn't exist
 	if err := os.MkdirAll(destDir, 0700); err != nil {
 		return fmt.Errorf("failed to create destination directory: %v", err)
@@ -1516,6 +1525,25 @@ func (pi *PluginInstaller) extractZip(zipPath, destDir string) error {
 
 	// Extract each file
 	for _, file := range reader.File {
+		// Check compression ratio to detect zip bomb attempts
+		if file.CompressedSize > 0 {
+			ratio := float64(file.UncompressedSize) / float64(file.CompressedSize)
+			if ratio > compressionRatioLimit {
+				return fmt.Errorf("suspicious compression ratio for file %s: %.0f:1", file.Name, ratio)
+			}
+		}
+
+		// Check individual file size
+		if file.UncompressedSize > maxFileSize {
+			return fmt.Errorf("file %s exceeds maximum size: %d bytes", file.Name, file.UncompressedSize)
+		}
+
+		// Check total extracted size
+		totalExtractedSize += int64(file.UncompressedSize)
+		if totalExtractedSize > maxExtractSize {
+			return fmt.Errorf("extracted size exceeds maximum: %d bytes", totalExtractedSize)
+		}
+
 		// Validate file path to prevent zip slip vulnerability
 		filePath := filepath.Join(destDir, file.Name)
 		if !strings.HasPrefix(filePath, filepath.Clean(destDir)+string(os.PathSeparator)) {
@@ -1524,7 +1552,7 @@ func (pi *PluginInstaller) extractZip(zipPath, destDir string) error {
 
 		if file.FileInfo().IsDir() {
 			// Create directory
-			if err := os.MkdirAll(filePath, file.Mode()); err != nil {
+			if err := os.MkdirAll(filePath, 0700); err != nil {
 				return fmt.Errorf("failed to create directory: %v", err)
 			}
 			continue
@@ -1547,7 +1575,8 @@ func (pi *PluginInstaller) extractZip(zipPath, destDir string) error {
 			return fmt.Errorf("failed to create file: %v", err)
 		}
 
-		if _, err := io.Copy(targetFile, fileReader); err != nil {
+		// Use io.CopyN with limit to prevent unbounded copying
+		if _, err := io.CopyN(targetFile, fileReader, int64(file.UncompressedSize)); err != nil && err != io.EOF {
 			fileReader.Close()
 			targetFile.Close()
 			return fmt.Errorf("failed to extract file: %v", err)
