@@ -3,11 +3,12 @@ package plugins
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
-	"math/rand"
+	"math/big"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -551,12 +552,16 @@ func runLegacySpeedtest() (map[string]interface{}, error) {
 }
 
 func simulateBandwidthTest(notes []string) map[string]interface{} {
-	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+	// Use crypto/rand for secure randomness
+	randomFloat := func() float64 {
+		val, _ := rand.Int(rand.Reader, big.NewInt(1000000))
+		return float64(val.Int64()) / 1000000.0
+	}
 
-	download := math.Round((70+rnd.Float64()*330)*100) / 100
-	upload := math.Round((download*(0.5+rnd.Float64()*0.4))*100) / 100
-	latency := math.Round((8+rnd.Float64()*25)*100) / 100
-	packetLoss := math.Round(rnd.Float64()*50) / 100
+	download := math.Round((70+randomFloat()*330)*100) / 100
+	upload := math.Round((download*(0.5+randomFloat()*0.4))*100) / 100
+	latency := math.Round((8+randomFloat()*25)*100) / 100
+	packetLoss := math.Round(randomFloat()*50) / 100
 
 	note := "Simulated bandwidth test results"
 	if len(notes) > 0 {

@@ -326,7 +326,7 @@ func (pi *PluginInstaller) UploadPlugin(file io.Reader) (PluginMetadata, error) 
 
 	// Extract the ZIP file
 	extractDir := filepath.Join(tempDir, "extracted")
-	err = os.MkdirAll(extractDir, 0755)
+	err = os.MkdirAll(extractDir, 0700)
 	if err != nil {
 		return PluginMetadata{}, fmt.Errorf("failed to create extraction directory: %v", err)
 	}
@@ -543,7 +543,7 @@ func (pi *PluginInstaller) UpdateVersionInfo(pluginID string) error {
 		return fmt.Errorf("failed to marshal plugin data: %v", err)
 	}
 
-	if err := os.WriteFile(jsonPath, updatedData, 0644); err != nil {
+	if err := os.WriteFile(jsonPath, updatedData, 0600); err != nil {
 		return fmt.Errorf("failed to write updated plugin.json: %v", err)
 	}
 
@@ -585,7 +585,7 @@ func (pi *PluginInstaller) updatePluginJsonWithGitInfo(pluginDir string, gitInfo
 		return fmt.Errorf("failed to marshal plugin data: %v", err)
 	}
 
-	if err := os.WriteFile(jsonPath, updatedData, 0644); err != nil {
+	if err := os.WriteFile(jsonPath, updatedData, 0600); err != nil {
 		return fmt.Errorf("failed to write updated plugin.json: %v", err)
 	}
 
@@ -1301,7 +1301,7 @@ func (pi *PluginInstaller) RefreshPluginCatalog() error {
 				continue
 			}
 
-			if err := os.WriteFile(jsonPath, updatedData, 0644); err != nil {
+			if err := os.WriteFile(jsonPath, updatedData, 0600); err != nil {
 				log.Printf("Error writing plugin.json for %s: %v", pluginID, err)
 				continue
 			}
@@ -1510,7 +1510,7 @@ func (pi *PluginInstaller) extractZip(zipPath, destDir string) error {
 	defer reader.Close()
 
 	// Create destination directory if it doesn't exist
-	if err := os.MkdirAll(destDir, 0755); err != nil {
+	if err := os.MkdirAll(destDir, 0700); err != nil {
 		return fmt.Errorf("failed to create destination directory: %v", err)
 	}
 
@@ -1531,7 +1531,7 @@ func (pi *PluginInstaller) extractZip(zipPath, destDir string) error {
 		}
 
 		// Create parent directory if it doesn't exist
-		if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(filePath), 0700); err != nil {
 			return fmt.Errorf("failed to create parent directory: %v", err)
 		}
 
@@ -1678,7 +1678,7 @@ func (pi *PluginInstaller) InstallPluginFromRepository(repository string) error 
 	// Create plugin directory if it doesn't exist
 	pluginDir := filepath.Join(pi.pluginsDir, pluginID)
 	if _, err := os.Stat(pluginDir); os.IsNotExist(err) {
-		if err := os.MkdirAll(pluginDir, 0755); err != nil {
+		if err := os.MkdirAll(pluginDir, 0700); err != nil {
 			return fmt.Errorf("failed to create plugin directory: %v", err)
 		}
 	}

@@ -81,7 +81,7 @@ func (cm *ConfigManager) LoadConfiguration() error {
 
 		// Ensure the directory exists
 		dir := filepath.Dir(cm.configPath)
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0700); err != nil {
 			return fmt.Errorf("failed to create config directory: %v", err)
 		}
 
@@ -91,7 +91,7 @@ func (cm *ConfigManager) LoadConfiguration() error {
 			return fmt.Errorf("failed to marshal default config: %v", err)
 		}
 
-		if err := os.WriteFile(cm.configPath, data, 0644); err != nil {
+		if err := os.WriteFile(cm.configPath, data, 0600); err != nil {
 			return fmt.Errorf("failed to write default config: %v", err)
 		}
 
@@ -134,12 +134,12 @@ func (cm *ConfigManager) SaveConfiguration() error {
 
 	// Ensure the directory exists
 	dir := filepath.Dir(cm.configPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("failed to create config directory: %v", err)
 	}
 
 	// Write the config file
-	if err := os.WriteFile(cm.configPath, data, 0644); err != nil {
+	if err := os.WriteFile(cm.configPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write config: %v", err)
 	}
 

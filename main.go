@@ -66,7 +66,7 @@ func main() {
 	fmt.Printf("📅 Built: %s (commit: %s)\n", BuildTime, GitCommit)
 
 	// Ensure plugin directories exist
-	os.MkdirAll("app/plugins/plugins", 0755)
+	os.MkdirAll("app/plugins/plugins", 0700)
 
 	// Initialize the router
 	r := gin.Default()

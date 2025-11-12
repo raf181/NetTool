@@ -198,5 +198,5 @@ func (cli *IterableCLI) SaveResultsToFile(filename string) error {
 	}
 
 	// Write to file
-	return os.WriteFile(filename, resultsJSON, 0644)
+	return os.WriteFile(filename, resultsJSON, 0600)
 }

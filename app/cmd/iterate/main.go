@@ -112,7 +112,7 @@ func main() {
 
 		// Save result if output file is specified
 		if *outputFile != "" {
-			if err := os.WriteFile(*outputFile, resultJSON, 0644); err != nil {
+			if err := os.WriteFile(*outputFile, resultJSON, 0600); err != nil {
 				fmt.Printf("Error saving result: %v\n", err)
 				os.Exit(1)
 			}

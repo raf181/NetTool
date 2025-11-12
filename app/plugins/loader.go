@@ -58,17 +58,23 @@ func GetRegistry() *PluginRegistry {
 
 // Command represents a shell command
 type Command struct {
-	cmd string
+	cmd  string
+	args []string
 }
 
 // NewCommand creates a new command
 func NewCommand(cmd string) *Command {
-	return &Command{cmd: cmd}
+	return &Command{cmd: cmd, args: []string{}}
+}
+
+// NewCommandWithArgs creates a new command with arguments
+func NewCommandWithArgs(cmd string, args ...string) *Command {
+	return &Command{cmd: cmd, args: args}
 }
 
 // Run executes the command and returns its output
 func (c *Command) Run() (string, error) {
-	cmd := exec.Command("bash", "-c", c.cmd)
+	cmd := exec.Command(c.cmd, c.args...)
 	output, err := cmd.CombinedOutput()
 	return string(output), err
 }
@@ -226,8 +232,8 @@ func (p *DynamicPlugin) GetDefinition() types.PluginDefinition {
 	}
 
 	// If plugin.json read failed, try running plugin.go with --definition flag
-	cmdStr := fmt.Sprintf("cd %s && go run plugin.go --definition", p.pluginDir)
-	cmd := exec.Command("bash", "-c", cmdStr)
+	cmd := exec.Command("go", "run", "plugin.go", "--definition")
+	cmd.Dir = p.pluginDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		fmt.Printf("Error getting plugin definition for %s: %v\n", p.pluginID, err)

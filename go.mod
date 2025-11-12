@@ -1,6 +1,6 @@
 module github.com/NetScout-Go/NetTool
 
-go 1.24.4
+go 1.24.8
 
 require (
 	github.com/gin-contrib/multitemplate v1.1.1
