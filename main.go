@@ -15,7 +15,6 @@ import (
 
 	"github.com/NetScout-Go/NetTool/app/core"
 	"github.com/NetScout-Go/NetTool/app/plugins"
-	"github.com/gin-contrib/multitemplate"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
@@ -35,18 +34,8 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// createMyRender creates a multitemplate renderer for proper template inheritance
-func createMyRender() multitemplate.Renderer {
-	r := multitemplate.NewRenderer()
-
-	// Load templates
-	r.AddFromFiles("dashboard.html", "app/templates/layout.html", "app/templates/dashboard.html")
-	r.AddFromFiles("error.html", "app/templates/layout.html", "app/templates/error.html")
-	r.AddFromFiles("plugin_page.html", "app/templates/layout.html", "app/templates/plugin_page.html")
-	r.AddFromFiles("plugin_manager.html", "app/templates/layout.html", "app/templates/plugin_manager.html")
-
-	return r
-}
+// Frontend directory for the React SPA
+const frontendDir = "frontend/dist"
 
 func main() {
 	// Parse command line flags
@@ -66,6 +55,13 @@ func main() {
 	fmt.Printf("🌐 NetTool %s starting...\n", Version)
 	fmt.Printf("📅 Built: %s (commit: %s)\n", BuildTime, GitCommit)
 
+	// Check if frontend build exists
+	if _, err := os.Stat(frontendDir); os.IsNotExist(err) {
+		log.Printf("⚠️  Frontend not built. Run 'cd frontend && npm run build' first.")
+	} else {
+		log.Printf("✅ React frontend found at %s", frontendDir)
+	}
+
 	// Ensure plugin directories exist
 	os.MkdirAll("app/plugins/plugins", 0700)
 
@@ -84,16 +80,13 @@ func main() {
 		c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		// Prevent referrer leaking
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
-		// Content Security Policy
-		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' ws: wss:")
+		// Content Security Policy - Updated for React SPA
+		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' ws: wss:")
 		c.Next()
 	})
 
 	// Start network info broadcaster in the background
 	go startNetworkInfoBroadcaster()
-
-	// Set HTML renderer
-	r.HTMLRender = createMyRender()
 
 	// Initialize plugin manager
 	pluginManager := plugins.NewPluginManager()
@@ -108,53 +101,7 @@ func main() {
 	log.Println("💡 TIP: To avoid GitHub API rate limits, add a personal access token to app/plugins/config.json")
 	log.Println("   Instructions: https://github.com/settings/tokens (generate token with 'public_repo' scope)")
 
-	// Serve static files
-	r.Static("/static", "./app/static")
-
-	// Main dashboard route
-	r.GET("/", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "dashboard.html", gin.H{
-			"title":   "NetTool Dashboard",
-			"plugins": pluginManager.GetPlugins(),
-		})
-	})
-
-	// Additional explicit dashboard route
-	r.GET("/dashboard", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "dashboard.html", gin.H{
-			"title":   "NetTool Dashboard",
-			"plugins": pluginManager.GetPlugins(),
-		})
-	})
-
-	// Plugin manager route
-	r.GET("/plugin-manager", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "plugin_manager.html", gin.H{
-			"title":   "Plugin Manager",
-			"plugins": pluginManager.GetPlugins(),
-		})
-	})
-
-	// Plugin page route
-	r.GET("/plugin/:id", func(c *gin.Context) {
-		pluginID := c.Param("id")
-		plugin, err := pluginManager.GetPlugin(pluginID)
-		if err != nil {
-			c.HTML(http.StatusNotFound, "error.html", gin.H{
-				"title": "Plugin Not Found",
-				"error": err.Error(),
-			})
-			return
-		}
-
-		c.HTML(http.StatusOK, "plugin_page.html", gin.H{
-			"title":   plugin.Name,
-			"plugin":  plugin,
-			"plugins": pluginManager.GetPlugins(),
-		})
-	})
-
-	// API endpoints
+	// API endpoints - registered BEFORE the SPA catch-all
 	api := r.Group("/api")
 	{
 		// Get all plugins
@@ -487,8 +434,12 @@ func main() {
 		handleWebSocketConnection(c.Writer, c.Request)
 	})
 
+	// Serve React SPA - this must be registered AFTER all API routes
+	serveSPA(r)
+
 	// Start the server
 	log.Printf("Starting NetTool server on :%d", *port)
+	log.Printf("Open http://localhost:%d in your browser", *port)
 	log.Fatal(r.Run(fmt.Sprintf(":%d", *port)))
 }
 
@@ -641,4 +592,74 @@ func startNetworkInfoBroadcaster() {
 		}
 		clientsMutex.Unlock()
 	}
+}
+
+// serveSPA configures the router to serve the React Single Page Application
+// It serves static assets from frontend/dist/assets/ and falls back to index.html
+// for all other non-API routes to support client-side routing
+func serveSPA(r *gin.Engine) {
+	// Check if the frontend build exists
+	if _, err := os.Stat(frontendDir); os.IsNotExist(err) {
+		log.Printf("⚠️  Frontend directory not found at %s", frontendDir)
+		log.Printf("   Run 'cd frontend && npm run build' to build the frontend")
+
+		// Fallback: serve a simple HTML page directing users to build the frontend
+		r.NoRoute(func(c *gin.Context) {
+			path := c.Request.URL.Path
+			if strings.HasPrefix(path, "/api") || strings.HasPrefix(path, "/ws") {
+				c.JSON(http.StatusNotFound, gin.H{"error": "API endpoint not found"})
+				return
+			}
+			c.Header("Content-Type", "text/html")
+			c.String(http.StatusOK, `<!DOCTYPE html>
+<html>
+<head><title>NetTool - Frontend Not Built</title></head>
+<body style="font-family: sans-serif; text-align: center; padding: 50px;">
+<h1>🔧 NetTool Frontend Not Built</h1>
+<p>The React frontend has not been built yet.</p>
+<p>Run the following commands to build it:</p>
+<pre style="background: #f5f5f5; padding: 20px; display: inline-block;">
+cd frontend
+npm install
+npm run build
+</pre>
+<p>Then restart the server.</p>
+</body>
+</html>`)
+		})
+		return
+	}
+
+	// Serve static assets (JS, CSS, images)
+	r.Static("/assets", filepath.Join(frontendDir, "assets"))
+
+	// Serve favicon and other root static files if they exist
+	rootFiles := []string{"favicon.ico", "favicon.svg", "robots.txt", "manifest.json"}
+	for _, file := range rootFiles {
+		filePath := filepath.Join(frontendDir, file)
+		if _, err := os.Stat(filePath); err == nil {
+			localFile := file
+			localPath := filePath
+			r.GET("/"+localFile, func(c *gin.Context) {
+				c.File(localPath)
+			})
+		}
+	}
+
+	// Handle all other routes by serving index.html (for client-side routing)
+	r.NoRoute(func(c *gin.Context) {
+		path := c.Request.URL.Path
+
+		// Don't serve SPA for API or WebSocket routes
+		if strings.HasPrefix(path, "/api") || strings.HasPrefix(path, "/ws") {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Endpoint not found"})
+			return
+		}
+
+		// Serve the React app's index.html for all other routes
+		indexPath := filepath.Join(frontendDir, "index.html")
+		c.File(indexPath)
+	})
+
+	log.Printf("✅ React SPA configured to serve from %s", frontendDir)
 }
